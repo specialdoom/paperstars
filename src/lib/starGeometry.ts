@@ -102,17 +102,28 @@ function buildPositions(puff: number[]) {
 	return positions;
 }
 
-/** Corner points of the finished star (five tips and two peaks), as a simple shape for collisions. */
-export const STAR_HULL = new Float32Array([
-	...Array.from({ length: 5 }, (_, i) => {
-		const angle = (90 + 72 * i) * DEG;
-		return [RADIUS * 0.92 * Math.cos(angle), RADIUS * 0.92 * Math.sin(angle), 0];
-	}).flat(),
-	...[0, 0, RADIUS * 0.5],
-	...[0, 0, -RADIUS * 0.5]
-]);
-
 const FULL = [1, 1, 1, 1, 1];
+
+/**
+ * Points on the surface of the finished star, as a shape for collisions: on each face the
+ * peak, and every other ring along the ridges out to the tips and down the middle of the
+ * sides. Their hull follows the star's rounded faces, so nothing it rests against shows
+ * through it.
+ */
+export const STAR_HULL = (() => {
+	const positions = buildPositions(FULL);
+	const points: number[] = [];
+	for (const face of [0, 1] as const) {
+		points.push(...positions.slice(face * FACE_VERTICES * 3, face * FACE_VERTICES * 3 + 3));
+		for (let ring = 1; ring < RINGS; ring += 2) {
+			for (let i = 0; i < AROUND; i += HALF_SIDE_STEPS) {
+				const vertex = vertexIndex(face, ring, i);
+				points.push(...positions.slice(vertex * 3, vertex * 3 + 3));
+			}
+		}
+	}
+	return new Float32Array(points);
+})();
 
 export function createStarGeometry(puff = FULL) {
 	const geometry = new BufferGeometry();

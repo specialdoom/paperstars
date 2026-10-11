@@ -24,6 +24,9 @@ const MAX_STEP = 1 / 30;
 // get out of the way of, and the simulation takes small steps to keep up.
 const MAX_TURN_RATE = 6;
 const SUBSTEPS = 2;
+// The slabs around the jar are flat, so they are pulled in until their corners, not their
+// middles, lie on the round glass: no star can reach past it between two slabs.
+const WALL_INSET = Math.cos(Math.PI / WALL_SEGMENTS);
 const UP = new Vector3(0, 1, 0);
 const FORWARD = new Vector3(0, 0, 1);
 
@@ -183,8 +186,10 @@ export async function createJarPhysics() {
 
 			// each stretch of the outline becomes a ring of slabs lying against it from outside
 			for (let i = 1; i <= last; i++) {
-				const [r0, y0] = profile[i - 1];
-				const [r1, y1] = profile[i];
+				const y0 = profile[i - 1][1];
+				const y1 = profile[i][1];
+				const r0 = profile[i - 1][0] * WALL_INSET;
+				const r1 = profile[i][0] * WALL_INSET;
 				const length = Math.hypot(r1 - r0, y1 - y0);
 				if (length < 1e-6) continue;
 				// along the outline and out of the jar, in the plane through its axis
