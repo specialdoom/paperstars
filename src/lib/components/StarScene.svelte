@@ -20,7 +20,8 @@
 		manual = null,
 		ondrag,
 		onrelease,
-		oncarry
+		oncarry,
+		onstep
 	}: {
 		design: StarDesign;
 		/** Wraps folded so far. */
@@ -40,6 +41,8 @@
 		onrelease?: () => void;
 		/** Called while the star is carried, with where the pointer is on the page; `dropped` once let go. */
 		oncarry?: (x: number, y: number, dropped: boolean) => void;
+		/** Called for a plain click, which does the next bit of the move in one go. */
+		onstep?: () => void;
 	} = $props();
 
 	const { canvas: view, invalidate, size } = useThrelte();
@@ -105,6 +108,8 @@
 	/** How far from the crease the paper counts as held, in strip widths. */
 	const GRIP = [0.5, 1.5];
 	const MIN_DRAG_PX = 40;
+	/** A press that moves less than this before letting go is a click. */
+	const CLICK_PX = 6;
 	const raycaster = new Raycaster();
 	const pointer = new Vector2();
 	const hit = new Vector3();
@@ -115,6 +120,7 @@
 	let dragValue: (dx: number, dy: number) => number;
 	let dragSide = 0;
 	let carrying = false;
+	let pressed: { x: number; y: number } | null = null;
 	let startX = 0;
 	let startY = 0;
 
@@ -180,6 +186,7 @@
 
 	function onpointerdown(event: PointerEvent) {
 		if (!manual || !camera || !controls || dragging || !event.isPrimary || event.button !== 0) return;
+		pressed = { x: event.clientX, y: event.clientY };
 		const bounds = view.getBoundingClientRect();
 		pointer.set(
 			((event.clientX - bounds.left) / bounds.width) * 2 - 1,
@@ -205,11 +212,23 @@
 	}
 
 	function onpointerup(event: PointerEvent) {
-		if (!dragging || !event.isPrimary) return;
-		dragging = false;
-		if (controls) controls.enabled = true;
-		if (carrying) oncarry?.(event.clientX, event.clientY, true);
-		else onrelease?.();
+		if (!event.isPrimary) return;
+		const clicked =
+			pressed !== null &&
+			Math.hypot(event.clientX - pressed.x, event.clientY - pressed.y) < CLICK_PX;
+		pressed = null;
+		if (dragging) {
+			dragging = false;
+			if (controls) controls.enabled = true;
+			if (carrying) oncarry?.(event.clientX, event.clientY, true);
+			else if (!clicked) onrelease?.();
+		}
+		if (clicked) onstep?.();
+	}
+
+	function onpointercancel(event: PointerEvent) {
+		pressed = null;
+		onpointerup(event);
 	}
 
 	view.addEventListener('pointerdown', onpointerdown);
@@ -223,7 +242,7 @@
 	});
 </script>
 
-<svelte:window {onpointermove} {onpointerup} onpointercancel={onpointerup} />
+<svelte:window {onpointermove} {onpointerup} {onpointercancel} />
 
 <T.PerspectiveCamera makeDefault position={VIEW.toArray()} fov={FOV} far={400} bind:ref={camera}>
 	<OrbitControls

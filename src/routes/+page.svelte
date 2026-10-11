@@ -16,6 +16,7 @@
 		jarShape,
 		loseStars
 	} from '#lib/jar.svelte.ts';
+	import { HAND_BONUS, earn, game, starWorth } from '#lib/game.svelte.ts';
 	import { JAR_SHAPES } from '#lib/jarShapes.ts';
 	import { PATTERNS, randomDesign, type StarDesign } from '#lib/strip.ts';
 
@@ -66,9 +67,9 @@
 	const LAST = STEPS.length - 1;
 
 	const HINTS = {
-		fold: 'Drag the loose end of the strip across the crease to fold it over.',
-		tuck: 'Drag the short tail in over the pentagon.',
-		puff: 'Push each of the five sides in: press on a side and drag towards the middle.'
+		fold: 'Click to fold once, or drag the loose end of the strip across the crease.',
+		tuck: 'Click, or drag the short tail in over the pentagon.',
+		puff: 'Click to push a side in, or press on a side and drag towards the middle.'
 	};
 
 	let design = $state<StarDesign>({
@@ -80,8 +81,11 @@
 
 	let step = $state(0);
 	let moving = $state(false);
-	/** Manual mode: the user folds each step by dragging the paper instead of watching it happen. */
-	let manual = $state(false);
+	/** Manual mode: the user folds each step by clicking or dragging the paper instead of watching it happen. */
+	let manual = $state(true);
+	/** Whether any step of the star on the table was folded for the user, which costs it the hand-folding bonus. */
+	let helped = $state(false);
+	const worth = $derived(starWorth(!helped));
 	/** Factory mode: stars are folded and dropped in the jar one after another, until it overflows. */
 	let factory = $state(false);
 	const folds = new Tween(0, { easing: cubicInOut });
@@ -119,6 +123,8 @@
 	async function goTo(next: number, instant = false) {
 		const target = STEPS[next];
 		const duration = (ms: number) => ({ duration: instant ? 0 : ms });
+		if (next === 0) helped = false;
+		else if (next > step) helped = true;
 		step = next;
 		moving = true;
 		await Promise.all([
@@ -153,7 +159,31 @@
 		else if (held === 'tuck') await tuck.set(Math.round(tuck.current), settle);
 		else await puff.set(puff.current.map(Math.round), settle);
 		moving = false;
+		arrive();
+	}
 
+	/** A plain click on the paper: one fold, the tuck, one side pushed in, or the star into the jar. */
+	async function advance() {
+		if (!action) return;
+		if (action === 'carry') {
+			if (!full) await dropInJar();
+			return;
+		}
+		const settle = { duration: 140, easing: cubicInOut };
+		const held = action;
+		moving = true;
+		if (held === 'fold') await folds.set(Math.floor(folds.current) + 1, settle);
+		else if (held === 'tuck') await tuck.set(1, settle);
+		else {
+			const side = puff.current.findIndex((value) => value < 1);
+			await puff.set(puff.current.with(side, 1), settle);
+		}
+		moving = false;
+		arrive();
+	}
+
+	/** Moves on to the next step once the paper has got to where that step starts. */
+	function arrive() {
 		const next = STEPS[step + 1];
 		if (
 			folds.current === next.folds &&
@@ -165,7 +195,9 @@
 	}
 
 	async function dropInJar() {
-		if (addStar($state.snapshot(design))) await goTo(0, true);
+		if (!addStar($state.snapshot(design), worth)) return;
+		earn(worth);
+		await goTo(0, true);
 	}
 
 	let running = false;
@@ -207,6 +239,9 @@
 <header>
 	<h1>Paper Stars</h1>
 	<p>Design a paper strip, fold it into a lucky star, fill your jar.</p>
+	<p class="luck" aria-live="polite">
+		<strong>{Math.floor(game.luck).toLocaleString()}</strong> luck
+	</p>
 </header>
 
 <main>
@@ -263,16 +298,17 @@
 					ondrag={drag}
 					onrelease={release}
 					oncarry={carry}
+					onstep={advance}
 				/>
 			</Canvas>
 			<dl class="keys">
 				<div>
+					<dt>Left click</dt>
+					<dd>fold once, drop the finished star in the jar{manual ? '' : ' (with Fold it myself on)'}</dd>
+				</div>
+				<div>
 					<dt>Left drag</dt>
-					<dd>
-						fold the paper, carry the finished star to the jar{manual
-							? ''
-							: ' (with Fold it myself on)'}
-					</dd>
+					<dd>fold the paper, carry the finished star to the jar</dd>
 				</div>
 				<div><dt>Right drag</dt><dd>rotate the view</dd></div>
 				<div><dt>Scroll</dt><dd>zoom</dd></div>
@@ -292,7 +328,7 @@
 				{#if manual && step === LAST}
 					<p class="turn">
 						<strong>Your turn: fill the jar.</strong>
-						{full ? 'The jar is full.' : 'Drag the star over to the jar and let go.'}
+						{full ? 'The jar is full.' : 'Click the star, or drag it over to the jar and let go.'}
 					</p>
 				{:else if manual && move}
 					<p class="turn">
@@ -307,6 +343,12 @@
 					</p>
 				{/if}
 			</div>
+			<p class="worth">
+				This star is worth <strong>{worth} luck</strong>
+				{helped
+					? `: fold every step yourself for ${HAND_BONUS} times as much.`
+					: `: ${HAND_BONUS} times as much for folding it all by hand.`}
+			</p>
 			<div class="actions">
 				<button type="button" onclick={() => goTo(step - 1)} disabled={step === 0 || busy}>
 					Back
@@ -392,6 +434,27 @@
 	header p {
 		margin: 0.25rem 0 0;
 		color: var(--muted);
+	}
+
+	header p.luck {
+		margin-top: 0.6rem;
+		font-size: 1.1rem;
+		color: var(--ink);
+		font-variant-numeric: tabular-nums;
+	}
+
+	.luck strong {
+		font-size: 1.5rem;
+	}
+
+	.worth {
+		margin: 0.75rem 0 0;
+		font-size: 0.85rem;
+		color: var(--muted);
+	}
+
+	.worth strong {
+		color: var(--ink);
 	}
 
 	main {

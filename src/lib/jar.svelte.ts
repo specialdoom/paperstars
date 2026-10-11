@@ -8,6 +8,11 @@ export const JAR_STAR_SCALE = 0.6;
 /** More than any jar holds: a jar is full when stars start spilling out of it, well before this. */
 export const MAX_STARS = 300;
 
+/** A star in the jar: what it looks like, and the luck it earned. */
+export interface JarredStar extends StarDesign {
+	worth: number;
+}
+
 function isDesign(value: unknown): value is StarDesign {
 	const d = value as StarDesign;
 	return (
@@ -21,11 +26,17 @@ function isDesign(value: unknown): value is StarDesign {
 }
 
 function load() {
-	let stars: StarDesign[] = [];
+	let stars: JarredStar[] = [];
 	let shape = JAR_SHAPES[0];
 	try {
 		const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]');
-		if (Array.isArray(parsed)) stars = parsed.filter(isDesign).slice(0, MAX_STARS);
+		if (Array.isArray(parsed)) {
+			stars = parsed
+				.filter(isDesign)
+				.slice(0, MAX_STARS)
+				// stars from before luck existed count as plain ones
+				.map((star) => ({ ...star, worth: (star as JarredStar).worth > 0 ? (star as JarredStar).worth : 1 }));
+		}
 		shape = findShape(localStorage.getItem(SHAPE_KEY)) ?? shape;
 	} catch {
 		// storage unavailable or unreadable: start with an empty jar
@@ -49,9 +60,9 @@ export function jarShape() {
 	return findShape(jar.shape) ?? JAR_SHAPES[0];
 }
 
-export function addStar(design: StarDesign) {
+export function addStar(design: StarDesign, worth: number) {
 	if (jar.stars.length >= MAX_STARS) return false;
-	jar.stars.push({ ...design });
+	jar.stars.push({ ...design, worth });
 	save();
 	return true;
 }
