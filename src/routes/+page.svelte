@@ -1,0 +1,663 @@
+<script lang="ts">
+	import { backOut, cubicInOut } from 'svelte/easing';
+	import { Tween } from 'svelte/motion';
+	import { NoToneMapping } from 'three';
+	import { Canvas } from '@threlte/core';
+	import JarScene from '#lib/components/JarScene.svelte';
+	import StarScene from '#lib/components/StarScene.svelte';
+	import StripPreview from '#lib/components/StripPreview.svelte';
+	import { FOLDS } from '#lib/foldChain.ts';
+	import { JAR_CAPACITY, addStar, emptyJar, jar } from '#lib/jar.svelte.ts';
+	import { PATTERNS, randomDesign, type StarDesign } from '#lib/strip.ts';
+
+	// the first few wraps stand in for the knot: flattened, a knot is the same pentagon
+	const KNOT_FOLDS = 3;
+	const MS_PER_FOLD = 300;
+	/** How long a finished star is shown before the factory drops it in the jar. */
+	const ADMIRE_MS = 700;
+
+	// `folds`/`tuck`/`puff` are where the animation rests once each step is done
+	const STEPS = [
+		{
+			title: 'Cut the paper',
+			text: 'Start with a narrow strip, about 1 cm wide and 25 to 30 cm long. Pick its colours and pattern.',
+			folds: 0,
+			tuck: 0,
+			puff: 0
+		},
+		{
+			title: 'Tie a knot',
+			text: 'Make a loop with one end and tie a simple knot. Pressed flat, it becomes a pentagon.',
+			folds: KNOT_FOLDS,
+			tuck: 0,
+			puff: 0
+		},
+		{
+			title: 'Tuck the tail',
+			text: 'Fold the short leftover tail in against the pentagon.',
+			folds: KNOT_FOLDS,
+			tuck: 1,
+			puff: 0
+		},
+		{
+			title: 'Wrap the strip',
+			text: 'Wrap the long end around the pentagon again and again, following its sides.',
+			folds: FOLDS,
+			tuck: 1,
+			puff: 0
+		},
+		{
+			title: 'Tuck and puff',
+			text: 'Tuck the last bit into the pocket, then gently pinch in the sides to puff it into a star.',
+			folds: FOLDS,
+			tuck: 1,
+			puff: 1
+		}
+	];
+	const LAST = STEPS.length - 1;
+
+	const HINTS = {
+		fold: 'Drag the loose end of the strip across the crease to fold it over.',
+		tuck: 'Drag the short tail in over the pentagon.',
+		puff: 'Push each of the five sides in: press on a side and drag towards the middle.'
+	};
+
+	let design = $state<StarDesign>({
+		colorA: '#ff8fab',
+		colorB: '#fff3c4',
+		pattern: 'stripes',
+		scale: 3
+	});
+
+	let step = $state(0);
+	let moving = $state(false);
+	/** Manual mode: the user folds each step by dragging the paper instead of watching it happen. */
+	let manual = $state(false);
+	/** Factory mode: stars are folded and dropped in the jar one after another, until the jar is full. */
+	let factory = $state(false);
+	const folds = new Tween(0, { easing: cubicInOut });
+	const tuck = new Tween(0, { duration: 600, easing: cubicInOut });
+	/** One value per pentagon side, so in manual mode each side is pushed in on its own. */
+	const puff = new Tween(sides(0), { duration: 900, easing: backOut });
+
+	function sides(value: number) {
+		return Array.from({ length: 5 }, () => value);
+	}
+
+	const full = $derived(jar.stars.length >= JAR_CAPACITY);
+	const sizable = $derived(design.pattern !== 'solid' && design.pattern !== 'gradient');
+
+	/** The move that takes the paper to the next step. */
+	const move = $derived.by(() => {
+		if (step === LAST) return null;
+		if (STEPS[step + 1].folds > STEPS[step].folds) return 'fold';
+		return STEPS[step + 1].tuck > STEPS[step].tuck ? 'tuck' : 'puff';
+	});
+	/** In manual mode, the move the user can make right now by dragging. */
+	const action = $derived(manual && !moving ? (move ?? 'carry') : null);
+	const busy = $derived(moving || factory);
+
+	/** Where the pointer is while the finished star is being carried to the jar. */
+	let carried = $state<{ x: number; y: number } | null>(null);
+	let jarPanel: HTMLElement;
+	const overJar = $derived.by(() => {
+		if (!carried) return false;
+		const { left, right, top, bottom } = jarPanel.getBoundingClientRect();
+		return carried.x >= left && carried.x <= right && carried.y >= top && carried.y <= bottom;
+	});
+
+	async function goTo(next: number, instant = false) {
+		const target = STEPS[next];
+		const duration = (ms: number) => ({ duration: instant ? 0 : ms });
+		step = next;
+		moving = true;
+		await Promise.all([
+			folds.set(target.folds, duration(Math.abs(target.folds - folds.current) * MS_PER_FOLD)),
+			tuck.set(target.tuck, duration(600)),
+			puff.set(sides(target.puff), duration(next === LAST ? 900 : 0))
+		]);
+		moving = false;
+	}
+
+	function drag(value: number, side: number) {
+		const instant = { duration: 0 };
+		if (action === 'fold') folds.set(value, instant);
+		else if (action === 'tuck') tuck.set(value, instant);
+		else if (action === 'puff') puff.set(puff.current.with(side, value), instant);
+	}
+
+	function carry(x: number, y: number, dropped: boolean) {
+		carried = { x, y };
+		// let go anywhere else and the star simply stays on the table
+		if (dropped && overJar && !full) dropInJar();
+		if (dropped) carried = null;
+	}
+
+	async function release() {
+		if (!action || action === 'carry') return;
+		// let go past halfway and the paper falls into place, otherwise it springs back
+		const settle = { duration: 250, easing: cubicInOut };
+		const held = action;
+		moving = true;
+		if (held === 'fold') await folds.set(Math.round(folds.current), settle);
+		else if (held === 'tuck') await tuck.set(Math.round(tuck.current), settle);
+		else await puff.set(puff.current.map(Math.round), settle);
+		moving = false;
+
+		const next = STEPS[step + 1];
+		if (
+			folds.current === next.folds &&
+			tuck.current === next.tuck &&
+			puff.current.every((value) => value === next.puff)
+		) {
+			step += 1;
+		}
+	}
+
+	async function dropInJar() {
+		if (addStar($state.snapshot(design))) await goTo(0, true);
+	}
+
+	let running = false;
+
+	async function runFactory() {
+		// switched off and on again mid-star: the loop already running just carries on
+		if (running) return;
+		running = true;
+		manual = false;
+		// the first star is the one on the table, wherever its folding has got to
+		while (factory && !full) {
+			if (step < LAST) {
+				await goTo(step + 1);
+				continue;
+			}
+			await new Promise((resolve) => setTimeout(resolve, ADMIRE_MS));
+			if (!factory) break;
+			await dropInJar();
+		}
+		factory = false;
+		running = false;
+	}
+
+	function clearJar() {
+		if (confirm('Empty the jar? This removes all your stars.')) emptyJar();
+	}
+</script>
+
+<svelte:head>
+	<title>Paper Stars</title>
+</svelte:head>
+
+<header>
+	<h1>Paper Stars</h1>
+	<p>Design a paper strip, fold it into a lucky star, fill your jar.</p>
+</header>
+
+<main>
+	<section class="panel controls">
+		<h2>Your strip</h2>
+
+		<div class="colors">
+			<label>
+				<input type="color" bind:value={design.colorA} />
+				Paper
+			</label>
+			<label>
+				<input type="color" bind:value={design.colorB} />
+				Print
+			</label>
+		</div>
+
+		<div class="patterns" role="group" aria-label="Pattern">
+			{#each PATTERNS as pattern (pattern)}
+				<button
+					type="button"
+					class:selected={design.pattern === pattern}
+					aria-pressed={design.pattern === pattern}
+					onclick={() => (design.pattern = pattern)}
+				>
+					{pattern}
+				</button>
+			{/each}
+		</div>
+
+		<label class="size">
+			Pattern size
+			<input type="range" min="1" max="5" step="1" bind:value={design.scale} disabled={!sizable} />
+		</label>
+
+		<StripPreview {design} />
+
+		<div class="actions">
+			<button type="button" onclick={() => (design = randomDesign())}>Surprise me</button>
+		</div>
+	</section>
+
+	<section class="fold">
+		<div class="stage" class:carrying={carried}>
+			<Canvas toneMapping={NoToneMapping}>
+				<StarScene
+					{design}
+					folds={folds.current}
+					tuck={tuck.current}
+					puff={puff.current}
+					finished={step === LAST || puff.current.some((value) => value > 0)}
+					spin={step === LAST}
+					manual={action}
+					ondrag={drag}
+					onrelease={release}
+					oncarry={carry}
+				/>
+			</Canvas>
+			<dl class="keys">
+				<div>
+					<dt>Left drag</dt>
+					<dd>
+						fold the paper, carry the finished star to the jar{manual
+							? ''
+							: ' (with Fold it myself on)'}
+					</dd>
+				</div>
+				<div><dt>Right drag</dt><dd>rotate the view</dd></div>
+				<div><dt>Scroll</dt><dd>zoom</dd></div>
+				<div><dt>Touch</dt><dd>drag the paper to fold, drag beside it to rotate, pinch to zoom</dd></div>
+			</dl>
+		</div>
+
+		<div class="panel guide">
+			<ol class="dots" aria-hidden="true">
+				{#each STEPS as { title }, i (title)}
+					<li class:done={i < step} class:current={i === step}></li>
+				{/each}
+			</ol>
+			<div class="step" aria-live="polite">
+				<h2>{step + 1}. {STEPS[step].title}</h2>
+				<p>{STEPS[step].text}</p>
+				{#if manual && step === LAST}
+					<p class="turn">
+						<strong>Your turn: fill the jar.</strong>
+						{full ? 'The jar is full.' : 'Drag the star over to the jar and let go.'}
+					</p>
+				{:else if manual && move}
+					<p class="turn">
+						<strong>Your turn: {STEPS[step + 1].title.toLowerCase()}.</strong>
+						{HINTS[move]}
+						{#if move === 'fold'}
+							({Math.floor(folds.current) - STEPS[step].folds} of
+							{STEPS[step + 1].folds - STEPS[step].folds} folds)
+						{:else if move === 'puff'}
+							({puff.current.filter((value) => value === 1).length} of 5 sides)
+						{/if}
+					</p>
+				{/if}
+			</div>
+			<div class="actions">
+				<button type="button" onclick={() => goTo(step - 1)} disabled={step === 0 || busy}>
+					Back
+				</button>
+				{#if step < LAST}
+					{#if !manual}
+						<button type="button" class="primary" onclick={() => goTo(step + 1)} disabled={busy}>
+							Next: {STEPS[step + 1].title.toLowerCase()}
+						</button>
+					{/if}
+				{:else}
+					<button type="button" class="primary" onclick={dropInJar} disabled={busy || full}>
+						{full ? 'Jar is full' : 'Drop in jar'}
+					</button>
+				{/if}
+				<div class="modes">
+					<label>
+						<input type="checkbox" bind:checked={manual} disabled={busy} />
+						Fold it myself
+					</label>
+					<label>
+						<input
+							type="checkbox"
+							bind:checked={factory}
+							onchange={() => factory && runFactory()}
+							disabled={full || (moving && !factory)}
+						/>
+						Keep making stars
+					</label>
+				</div>
+			</div>
+		</div>
+	</section>
+
+	<section class="panel jar" class:target={overJar && !full} bind:this={jarPanel}>
+		<div class="jar-head">
+			<h2>Your jar</h2>
+			<span>{jar.stars.length} / {JAR_CAPACITY}</span>
+		</div>
+		<div class="jar-view">
+			<Canvas toneMapping={NoToneMapping}>
+				<JarScene stars={jar.stars} />
+			</Canvas>
+		</div>
+		<p class="hint">Drag the jar to tip it and shake the stars around.</p>
+		<button type="button" onclick={clearJar} disabled={jar.stars.length === 0}>Empty jar</button>
+	</section>
+</main>
+
+{#if carried}
+	<div class="carried" style:left="{carried.x}px" style:top="{carried.y}px">
+		<div style:background="linear-gradient(135deg, {design.colorA}, {design.colorB})"></div>
+	</div>
+{/if}
+
+<style>
+	header {
+		padding: 1.5rem 1.5rem 0.5rem;
+		text-align: center;
+	}
+
+	h1 {
+		margin: 0;
+		font-size: 2rem;
+		letter-spacing: 0.02em;
+	}
+
+	header p {
+		margin: 0.25rem 0 0;
+		color: var(--muted);
+	}
+
+	main {
+		display: grid;
+		grid-template-columns: minmax(260px, 340px) minmax(0, 1fr) minmax(260px, 360px);
+		gap: 1rem;
+		padding: 1rem 1.5rem 1.5rem;
+		max-width: 1400px;
+		margin: 0 auto;
+		align-items: start;
+	}
+
+	.panel {
+		background: var(--panel);
+		border-radius: 16px;
+		padding: 1.1rem;
+		box-shadow: 0 6px 24px rgba(90, 70, 130, 0.12);
+		backdrop-filter: blur(6px);
+	}
+
+	h2 {
+		margin: 0 0 0.9rem;
+		font-size: 1.05rem;
+	}
+
+	.colors {
+		display: flex;
+		gap: 1.25rem;
+		margin-bottom: 1rem;
+	}
+
+	.colors label {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 0.9rem;
+	}
+
+	input[type='color'] {
+		width: 2.4rem;
+		height: 2.4rem;
+		padding: 0;
+		border: 2px solid white;
+		border-radius: 50%;
+		background: none;
+		cursor: pointer;
+		overflow: hidden;
+		box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+	}
+
+	input[type='color']::-webkit-color-swatch-wrapper {
+		padding: 0;
+	}
+
+	input[type='color']::-webkit-color-swatch {
+		border: none;
+	}
+
+	.patterns {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.4rem;
+		margin-bottom: 1rem;
+	}
+
+	button {
+		font: inherit;
+		font-size: 0.9rem;
+		color: var(--ink);
+		padding: 0.45rem 0.85rem;
+		border: 1px solid rgba(59, 51, 82, 0.18);
+		border-radius: 999px;
+		background: white;
+		cursor: pointer;
+	}
+
+	button:hover:not(:disabled) {
+		border-color: var(--accent);
+	}
+
+	button:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.patterns button {
+		text-transform: capitalize;
+	}
+
+	button.selected {
+		background: var(--ink);
+		border-color: var(--ink);
+		color: white;
+	}
+
+	button.primary {
+		background: var(--accent);
+		border-color: var(--accent);
+		color: white;
+		font-weight: 600;
+	}
+
+	.size {
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+		margin-bottom: 1rem;
+		font-size: 0.9rem;
+	}
+
+	.size input {
+		accent-color: var(--accent);
+	}
+
+	.actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		margin-top: 1rem;
+	}
+
+	.fold {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+		min-width: 0;
+	}
+
+	.stage {
+		position: relative;
+		height: min(58vh, 520px);
+		min-height: 300px;
+		cursor: grab;
+	}
+
+	/* the star has been picked up: only a faint outline stays on the table */
+	.stage.carrying :global(canvas) {
+		opacity: 0.25;
+	}
+
+	.carried {
+		position: fixed;
+		z-index: 10;
+		width: 4.5rem;
+		height: 4.5rem;
+		margin: -2.25rem 0 0 -2.25rem;
+		filter: drop-shadow(0 6px 8px rgba(59, 51, 82, 0.35));
+		pointer-events: none;
+	}
+
+	.carried div {
+		width: 100%;
+		height: 100%;
+		clip-path: polygon(
+			50% 0%,
+			63% 35%,
+			100% 38%,
+			71% 61%,
+			81% 97%,
+			50% 76%,
+			19% 97%,
+			29% 61%,
+			0% 38%,
+			37% 35%
+		);
+	}
+
+	.jar.target {
+		outline: 3px solid var(--accent);
+	}
+
+	.keys {
+		position: absolute;
+		left: 0.5rem;
+		bottom: 0.5rem;
+		max-width: calc(100% - 1rem);
+		margin: 0;
+		padding: 0.45rem 0.65rem;
+		border-radius: 10px;
+		background: var(--panel);
+		font-size: 0.78rem;
+		line-height: 1.5;
+		color: var(--muted);
+		/* a legend only: drags pass through to the paper underneath */
+		pointer-events: none;
+	}
+
+	.keys div {
+		display: flex;
+		gap: 0.5rem;
+	}
+
+	.keys dt {
+		flex: none;
+		min-width: 5.2em;
+		font-weight: 600;
+		color: var(--ink);
+	}
+
+	.keys dd {
+		margin: 0;
+	}
+
+	.dots {
+		display: flex;
+		gap: 0.4rem;
+		margin: 0 0 0.9rem;
+		padding: 0;
+		list-style: none;
+	}
+
+	.dots li {
+		flex: 1;
+		height: 4px;
+		border-radius: 2px;
+		background: rgba(59, 51, 82, 0.15);
+	}
+
+	.dots li.done {
+		background: var(--ink);
+	}
+
+	.dots li.current {
+		background: var(--accent);
+	}
+
+	.step h2 {
+		margin-bottom: 0.35rem;
+	}
+
+	.step p {
+		margin: 0;
+		min-height: 2.8em;
+		color: var(--muted);
+		line-height: 1.4;
+	}
+
+	.step p.turn {
+		margin-top: 0.5rem;
+		color: var(--ink);
+	}
+
+	.modes {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.4rem 1rem;
+		margin-left: auto;
+		font-size: 0.9rem;
+	}
+
+	.modes label {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		cursor: pointer;
+	}
+
+	.modes input {
+		accent-color: var(--accent);
+	}
+
+	.jar-head {
+		display: flex;
+		justify-content: space-between;
+		align-items: baseline;
+	}
+
+	.jar-head span {
+		font-size: 0.85rem;
+		color: var(--muted);
+		font-variant-numeric: tabular-nums;
+	}
+
+	.jar-view {
+		height: 420px;
+		cursor: grab;
+		/* dragging tips the jar, so it must not scroll the page on touch screens */
+		touch-action: none;
+	}
+
+	.hint {
+		margin: 0.25rem 0 0.75rem;
+		font-size: 0.8rem;
+		color: var(--muted);
+	}
+
+	@media (max-width: 980px) {
+		main {
+			grid-template-columns: 1fr;
+		}
+
+		.fold {
+			order: -1;
+		}
+
+		.stage {
+			height: 340px;
+		}
+	}
+</style>
