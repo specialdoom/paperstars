@@ -4,7 +4,7 @@
 	import type { OrbitControls as ThreeOrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 	import { T, useThrelte } from '@threlte/core';
 	import { OrbitControls } from '@threlte/extras';
-	import { ADVANCE, RADIUS, STRIP_LENGTH } from '#lib/fold.ts';
+	import { ADVANCE, RADIUS, STRIP_LENGTH, VISIBLE_END } from '#lib/fold.ts';
 	import { FOLDS, STRIP_ANGLE, STRIP_CENTER, createFoldChain } from '#lib/foldChain.ts';
 	import { PINCH, createStarGeometry, setStarPuff } from '#lib/starGeometry.ts';
 	import { createStarTexture, drawStarTexture } from '#lib/starTexture.ts';
@@ -160,7 +160,7 @@
 			local.y > -margin &&
 			local.y < 1 + margin &&
 			local.x > -margin &&
-			local.x < STRIP_LENGTH + margin;
+			local.x < VISIBLE_END + margin;
 		if (!inside) return;
 
 		// the drag is measured on screen as it was when grabbed, as folding moves the camera

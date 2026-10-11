@@ -26,7 +26,10 @@ export function drawStarTexture(canvas: HTMLCanvasElement, strip: HTMLCanvasElem
 	ctx.drawImage(strip, (VISIBLE_END - 1) * ppu, 0, ppu, ppu, 0, 0, canvas.width, canvas.height);
 
 	// earlier wraps are fully hidden; a couple extra guard against seams
-	for (const wrap of WRAP_SEQUENCE.slice(-(VISIBLE_WRAPS + 2))) {
+	const wraps = WRAP_SEQUENCE.slice(-(VISIBLE_WRAPS + 2));
+	// the end of the strip is tucked under the wrap before it on its face, so it is laid down first
+	wraps.splice(-3, 0, wraps.pop()!);
+	for (const wrap of wraps) {
 		const toPixels: Mat = [scale, 0, 0, -scale, size / 2 + wrap.face * size, size / 2];
 
 		ctx.save();
@@ -38,7 +41,9 @@ export function drawStarTexture(canvas: HTMLCanvasElement, strip: HTMLCanvasElem
 		ctx.clip();
 
 		ctx.setTransform(...mul(toPixels, mul(wrap.matrix, stripToUnits)));
-		ctx.drawImage(strip, 0, 0);
+		// only as far as the strip goes: the last wrap stops short and leaves the one under it showing
+		const length = VISIBLE_END * ppu;
+		ctx.drawImage(strip, 0, 0, length, ppu, 0, 0, length, ppu);
 		ctx.restore();
 	}
 }

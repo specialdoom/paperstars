@@ -9,7 +9,7 @@ import {
 	Vector3,
 	type Texture
 } from 'three';
-import { CREASES, LEAD_CREASE, STRIP_LENGTH, WRAP_SEQUENCE, type Crease } from './fold';
+import { CREASES, END_CUT, LEAD_CREASE, STRIP_LENGTH, WRAP_SEQUENCE, type Crease } from './fold';
 
 // The paper strip as a chain of flat pieces hinged along its creases. Every
 // piece keeps its flat strip coordinates; each hinge swings everything after
@@ -68,6 +68,12 @@ function hinge(parent: Group, [p, q]: Crease, direction: 1 | -1) {
 const clamp01 = (value: number) => Math.min(Math.max(value, 0), 1);
 // wraps alternate faces, so every second one starts a new layer
 const layer = (k: number) => Math.ceil(k / 2);
+/** How far above the wrap it folds from wrap `k` comes to rest, through the pentagon. */
+function lift(k: number) {
+	// the end of the strip is tucked in: it slips under the wrap before it on its face
+	const tucked = k === CREASES.length - 1 ? 1.5 : 0;
+	return (layer(k - 1) + layer(k) - tucked) * LAYER;
+}
 
 export function createFoldChain(texture: Texture) {
 	const material = new MeshStandardMaterial({ map: texture, side: DoubleSide, roughness: 0.85 });
@@ -96,7 +102,7 @@ export function createFoldChain(texture: Texture) {
 	let parent = root;
 	for (let k = 1; k < CREASES.length; k++) {
 		const h = hinge(parent, CREASES[k - 1], 1);
-		add(h.body, CREASES[k - 1], CREASES[k]);
+		add(h.body, CREASES[k - 1], k < CREASES.length - 1 ? CREASES[k] : END_CUT);
 		hinges.push(h);
 		parent = h.body;
 	}
@@ -106,7 +112,7 @@ export function createFoldChain(texture: Texture) {
 		/** `folds`: how many hinges are closed (fractional while one is moving); `tuck`: the leading tail. */
 		setProgress(folds: number, tuck: number) {
 			lead.set(clamp01(tuck), LAYER / 2);
-			hinges.forEach((h, i) => h.set(clamp01(folds - i), (layer(i) + layer(i + 1)) * LAYER));
+			hinges.forEach((h, i) => h.set(clamp01(folds - i), lift(i + 1)));
 		},
 		/**
 		 * The crease hinge `index` folds along (`'lead'` for the leading tail). Its points are strip

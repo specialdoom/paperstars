@@ -24,7 +24,13 @@ const START = LEAD + SIDE * Math.cos(72 * DEG);
 export const WRAPS = Math.floor((STRIP_LENGTH - START) / ADVANCE);
 /** Three wraps cover a face, so only the last six wraps show on the star. */
 export const VISIBLE_WRAPS = 6;
-export const VISIBLE_END = START + WRAPS * ADVANCE;
+/** How far short of the pentagon's edge the last wrap stops, at its nearest. */
+const END_GAP = 0.3;
+/**
+ * Where the strip ends: partway across the last wrap, before the side it would
+ * fold over next, so its cut end lies on the face instead of along an edge.
+ */
+export const VISIBLE_END = START + WRAPS * ADVANCE - (SIDE * Math.cos(72 * DEG)) / 2 - END_GAP;
 export const VISIBLE_START = VISIBLE_END - VISIBLE_WRAPS * ADVANCE;
 
 /** Pentagon corners, counter-clockwise from the top. */
@@ -101,6 +107,12 @@ export const CREASES: Crease[] = WRAP_SEQUENCE.map(({ matrix }, k) => {
 	const ends = [apply(toStrip, PENTAGON[side]), apply(toStrip, PENTAGON[(side + 1) % 5])];
 	return (ends[0][1] < ends[1][1] ? ends : ends.reverse()) as Crease;
 });
+
+/** The cut end of the strip, which closes the last wrap in place of a crease. */
+export const END_CUT: Crease = [
+	[VISIBLE_END, 0],
+	[VISIBLE_END, 1]
+];
 
 /** Where the leading tail meets the first wrap. */
 export const LEAD_CREASE: Crease = [
