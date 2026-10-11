@@ -9,12 +9,12 @@
 	let {
 		design,
 		geometry,
-		mesh = $bindable()
+		oncreate
 	}: {
 		design: StarDesign;
 		geometry: BufferGeometry;
-		/** The star's mesh; the jar moves it to follow the physics. */
-		mesh?: Mesh;
+		/** Hands over the star's mesh, which the jar moves to follow the physics. */
+		oncreate: (mesh: Mesh) => void | (() => void);
 	} = $props();
 
 	// a star in the jar never changes, so its texture is painted once
@@ -25,6 +25,6 @@
 </script>
 
 <!-- hidden until the jar has placed it -->
-<T.Mesh bind:ref={mesh} {geometry} scale={JAR_STAR_SCALE} visible={false}>
+<T.Mesh {oncreate} {geometry} scale={JAR_STAR_SCALE} visible={false}>
 	<T.MeshStandardMaterial map={texture} roughness={0.85} />
 </T.Mesh>

@@ -1,14 +1,24 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
-	import { DoubleSide, Euler, Quaternion, type Group, type Mesh } from 'three';
+	import { DoubleSide, Euler, Quaternion, Vector2, type Group, type Mesh } from 'three';
 	import { T, useTask, useThrelte } from '@threlte/core';
-	import { JAR_HEIGHT, JAR_RADIUS, packStars } from '#lib/jar.svelte.ts';
+	import { packStars } from '#lib/jar.svelte.ts';
+	import type { JarShape } from '#lib/jarShapes.ts';
 	import { JAR_CENTER, createJarPhysics, type JarPhysics } from '#lib/jarPhysics.ts';
 	import { createStarGeometry } from '#lib/starGeometry.ts';
 	import type { StarDesign } from '#lib/strip.ts';
 	import JarStar from './JarStar.svelte';
 
-	let { stars }: { stars: StarDesign[] } = $props();
+	let {
+		stars,
+		shape,
+		onspill
+	}: {
+		stars: StarDesign[];
+		shape: JarShape;
+		/** Stars fell out of a full jar; see `loseStars` for what the numbers mean. */
+		onspill?: (indices: number[]) => void;
+	} = $props();
 
 	const { invalidate, renderer } = useThrelte();
 
@@ -19,10 +29,16 @@
 	const RETURN_RATE = 4;
 
 	const geometry = createStarGeometry();
-	const meshes = $state<(Mesh | undefined)[]>([]);
+	const meshes = new Map<StarDesign, Mesh>();
 	let jarGroup = $state<Group>();
 	let physics = $state.raw<JarPhysics>();
+	/** The shape the physics walls were last built for. */
+	let built: JarShape | undefined;
 	let restored = false;
+
+	const outline = $derived(shape.profile.map(([radius, y]) => new Vector2(radius, y)));
+	const [floorRadius, floorY] = $derived(shape.profile[0]);
+	const [rimRadius, rimY] = $derived(shape.profile[shape.profile.length - 1]);
 
 	// the jar tilts forward/back (pitch) and left/right (roll) towards where it was dragged
 	const tilt = { pitch: 0, roll: 0 };
@@ -78,10 +94,16 @@
 	$effect(() => {
 		const count = stars.length;
 		if (!physics) return;
+		if (shape !== built) {
+			physics.setShape(shape);
+			built = shape;
+			restored = false;
+		}
 		if (count < physics.stars.length) physics.clear();
 		if (!restored) {
-			// stars saved from an earlier visit start out resting in a pile
-			for (const placement of packStars(count)) physics.addStar(placement);
+			// stars saved from an earlier visit, or moved over from another jar, start out resting
+			// in a pile; any the pile has no room for are poured in on top
+			for (const placement of packStars(count, shape)) physics.addStar(placement);
 			restored = true;
 		}
 		while (physics.stars.length < count) physics.addStar();
@@ -97,13 +119,16 @@
 			rotation.setFromEuler(euler.set(tilt.pitch, 0, tilt.roll));
 
 			const active = physics.step(delta, rotation);
-			jarGroup?.quaternion.copy(rotation);
+			jarGroup?.quaternion.copy(physics.tilt);
+			const spilled = physics.takeSpilled();
+			if (spilled.length) onspill?.(spilled);
 			physics.stars.forEach((body, i) => {
-				const mesh = meshes[i];
+				const mesh = meshes.get(stars[i]);
 				if (!mesh) return;
 				mesh.position.copy(body.translation());
 				mesh.quaternion.copy(body.rotation());
-				mesh.visible = true;
+				// a star still waiting its turn to be poured in is nowhere yet
+				mesh.visible = body.isEnabled();
 			});
 			if (active) invalidate();
 		},
@@ -124,13 +149,20 @@
 <T.DirectionalLight position={[4, 8, 6]} intensity={1.6} />
 <T.DirectionalLight position={[-5, 2, -4]} intensity={1} />
 
-{#each stars as design, i (i)}
-	<JarStar {design} {geometry} bind:mesh={meshes[i]} />
+{#each stars as design (design)}
+	<JarStar
+		{design}
+		{geometry}
+		oncreate={(mesh) => {
+			meshes.set(design, mesh);
+			return () => meshes.delete(design);
+		}}
+	/>
 {/each}
 
 <T.Group bind:ref={jarGroup} position={JAR_CENTER.toArray()}>
 	<T.Mesh renderOrder={1}>
-		<T.CylinderGeometry args={[JAR_RADIUS, JAR_RADIUS, JAR_HEIGHT, 48, 1, true]} />
+		<T.LatheGeometry args={[outline, 48]} />
 		<T.MeshStandardMaterial
 			color="#cfe6ff"
 			transparent
@@ -140,18 +172,20 @@
 			depthWrite={false}
 		/>
 	</T.Mesh>
-	<T.Mesh position.y={-JAR_HEIGHT / 2} rotation.x={-Math.PI / 2} renderOrder={1}>
-		<T.CircleGeometry args={[JAR_RADIUS, 48]} />
-		<T.MeshStandardMaterial
-			color="#cfe6ff"
-			transparent
-			opacity={0.35}
-			side={DoubleSide}
-			depthWrite={false}
-		/>
-	</T.Mesh>
-	<T.Mesh position.y={JAR_HEIGHT / 2} rotation.x={Math.PI / 2} renderOrder={1}>
-		<T.TorusGeometry args={[JAR_RADIUS, 0.07, 12, 48]} />
+	{#if floorRadius > 0}
+		<T.Mesh position.y={floorY} rotation.x={-Math.PI / 2} renderOrder={1}>
+			<T.CircleGeometry args={[floorRadius, 48]} />
+			<T.MeshStandardMaterial
+				color="#cfe6ff"
+				transparent
+				opacity={0.35}
+				side={DoubleSide}
+				depthWrite={false}
+			/>
+		</T.Mesh>
+	{/if}
+	<T.Mesh position.y={rimY} rotation.x={Math.PI / 2} renderOrder={1}>
+		<T.TorusGeometry args={[rimRadius, 0.07, 12, 48]} />
 		<T.MeshStandardMaterial color="#e6f1ff" transparent opacity={0.7} roughness={0.2} />
 	</T.Mesh>
 </T.Group>

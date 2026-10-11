@@ -7,7 +7,16 @@
 	import StarScene from '#lib/components/StarScene.svelte';
 	import StripPreview from '#lib/components/StripPreview.svelte';
 	import { FOLDS } from '#lib/foldChain.ts';
-	import { JAR_CAPACITY, addStar, emptyJar, jar } from '#lib/jar.svelte.ts';
+	import {
+		MAX_STARS,
+		addStar,
+		chooseJar,
+		emptyJar,
+		jar,
+		jarShape,
+		loseStars
+	} from '#lib/jar.svelte.ts';
+	import { JAR_SHAPES } from '#lib/jarShapes.ts';
 	import { PATTERNS, randomDesign, type StarDesign } from '#lib/strip.ts';
 
 	// the first few wraps stand in for the knot: flattened, a knot is the same pentagon
@@ -73,7 +82,7 @@
 	let moving = $state(false);
 	/** Manual mode: the user folds each step by dragging the paper instead of watching it happen. */
 	let manual = $state(false);
-	/** Factory mode: stars are folded and dropped in the jar one after another, until the jar is full. */
+	/** Factory mode: stars are folded and dropped in the jar one after another, until it overflows. */
 	let factory = $state(false);
 	const folds = new Tween(0, { easing: cubicInOut });
 	const tuck = new Tween(0, { duration: 600, easing: cubicInOut });
@@ -84,7 +93,8 @@
 		return Array.from({ length: 5 }, () => value);
 	}
 
-	const full = $derived(jar.stars.length >= JAR_CAPACITY);
+	const shape = $derived(jarShape());
+	const full = $derived(jar.stars.length >= MAX_STARS);
 	const sizable = $derived(design.pattern !== 'solid' && design.pattern !== 'gradient');
 
 	/** The move that takes the paper to the next step. */
@@ -177,6 +187,12 @@
 		}
 		factory = false;
 		running = false;
+	}
+
+	function spill(indices: number[]) {
+		loseStars(indices);
+		// the jar is full: no point folding more stars for it
+		factory = false;
 	}
 
 	function clearJar() {
@@ -328,14 +344,29 @@
 	<section class="panel jar" class:target={overJar && !full} bind:this={jarPanel}>
 		<div class="jar-head">
 			<h2>Your jar</h2>
-			<span>{jar.stars.length} / {JAR_CAPACITY}</span>
+			<span>{jar.stars.length} {jar.stars.length === 1 ? 'star' : 'stars'}</span>
+		</div>
+		<div class="patterns" role="group" aria-label="Jar shape">
+			{#each JAR_SHAPES as option (option.id)}
+				<button
+					type="button"
+					class:selected={option === shape}
+					aria-pressed={option === shape}
+					onclick={() => chooseJar(option)}
+				>
+					{option.name}
+				</button>
+			{/each}
 		</div>
 		<div class="jar-view">
 			<Canvas toneMapping={NoToneMapping}>
-				<JarScene stars={jar.stars} />
+				<JarScene stars={jar.stars} {shape} onspill={spill} />
 			</Canvas>
 		</div>
-		<p class="hint">Drag the jar to tip it and shake the stars around.</p>
+		<p class="hint">
+			Drag the jar to tip it and shake the stars around. Stars that no longer fit spill over the rim
+			and are lost.
+		</p>
 		<button type="button" onclick={clearJar} disabled={jar.stars.length === 0}>Empty jar</button>
 	</section>
 </main>
