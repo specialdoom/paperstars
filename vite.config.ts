@@ -12,7 +12,12 @@ export default defineConfig({
 			},
 
 			// the app is fully client-side, so it builds to plain static files
-			adapter: adapter()
+			adapter: adapter(),
+
+			// GitHub Pages serves the site from /<repo>, so CI sets BASE_PATH
+			paths: {
+				base: (process.env.BASE_PATH ?? '') as '' | `/${string}`
+			}
 		})
 	]
 });
