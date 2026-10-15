@@ -364,8 +364,8 @@
 			</Canvas>
 		</div>
 		<p class="hint">
-			Drag the jar to tip it and shake the stars around. Stars that no longer fit spill over the rim
-			and are lost.
+			Drag the jar to tip it and shake the stars around. Stars that spill over the rim or pour out
+			of a tipped jar are lost.
 		</p>
 		<button type="button" onclick={clearJar} disabled={jar.stars.length === 0}>Empty jar</button>
 	</section>

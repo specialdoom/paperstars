@@ -27,19 +27,20 @@ const SUBSTEPS = 2;
 const UP = new Vector3(0, 1, 0);
 const FORWARD = new Vector3(0, 0, 1);
 
-// A star dropped from above the jar only bumps into other stars until it is inside,
-// where the glass and an invisible lid keep it in however the jar is tipped. If the jar
-// is full it never gets inside: it rests on the heap, or rolls off and falls away.
+// Only a star inside the jar feels its glass. One above the opening or out of the jar,
+// whether dropped from above, heaped on a full jar or poured out of a tipped one, only
+// bumps into other stars: it falls into the jar, rests on the heap, or falls away.
 const JAR_GROUPS = 0x0001ffff;
-const ENTERING_GROUPS = 0x00040004;
+const OUTSIDE_GROUPS = 0x00040004;
 const INSIDE_GROUPS = 0xffffffff;
 /** Seconds between stars when many are waiting to be poured in. */
 const DROP_INTERVAL = 0.06;
 const DROP_ABOVE = 0.7;
 /** Stars are let go already falling, so the next one has room. */
 const DROP_SPEED = 8;
-/** How far under the rim a star counts as inside. */
+/** How far under the rim a star counts as inside, and how far over it as out again. */
 const INSIDE_DEPTH = 0.3;
+const OUTSIDE_HEIGHT = 0.2;
 /** A star that has fallen this far below the jar is gone. */
 const LOST_BELOW = 9;
 
@@ -61,9 +62,9 @@ export async function createJarPhysics() {
 
 	const hull = STAR_HULL.map((value) => value * JAR_STAR_SCALE);
 	const stars: RigidBody[] = [];
-	/** Stars not dropped yet, and stars dropped but not inside the jar (yet). */
+	/** Stars not dropped yet, and stars that are not inside the jar. */
 	let waiting: RigidBody[] = [];
-	const entering = new Set<RigidBody>();
+	const outside = new Set<RigidBody>();
 	let spilled: number[] = [];
 	let sinceDrop = Infinity;
 
@@ -84,15 +85,15 @@ export async function createJarPhysics() {
 		for (const star of stars) world.removeRigidBody(star);
 		stars.length = 0;
 		waiting = [];
-		entering.clear();
+		outside.clear();
 		spilled = [];
 	}
 
-	/** A flat slab closing the jar at height `y`, on the side `direction` points to. */
-	function cap(radius: number, y: number, direction: 1 | -1) {
+	/** A flat slab closing the bottom of the jar at height `y`. */
+	function floor(radius: number, y: number) {
 		return world.createCollider(
 			RAPIER.ColliderDesc.cuboid(radius + 0.5, WALL_HALF_THICKNESS, radius + 0.5)
-				.setTranslation(0, y + direction * WALL_HALF_THICKNESS, 0)
+				.setTranslation(0, y - WALL_HALF_THICKNESS, 0)
 				.setFriction(0.6)
 				.setCollisionGroups(JAR_GROUPS),
 			jar
@@ -111,32 +112,37 @@ export async function createJarPhysics() {
 		star.setLinvel({ x: 0, y: -DROP_SPEED, z: 0 }, false);
 		star.setAngvel({ x: spread(5), y: spread(5), z: spread(5) }, false);
 		star.setEnabled(true);
-		entering.add(star);
 	}
 
-	/** Sorts out the stars that were dropped: which made it inside, and which fell away. */
+	/** Keeps track of which stars are inside the jar, which have left it, and which fell away. */
 	function follow() {
-		if (!shape || entering.size === 0) return;
+		if (!shape) return;
 		upright.copy(tilt).invert();
 		const lost: number[] = [];
-		for (const star of entering) {
+		stars.forEach((star, index) => {
+			if (!star.isEnabled()) return;
 			position.copy(star.translation());
 			if (position.y < JAR_CENTER.y - LOST_BELOW) {
-				lost.push(stars.indexOf(star));
-				continue;
+				lost.push(index);
+				return;
 			}
 			position.sub(JAR_CENTER).applyQuaternion(upright);
-			const inside =
-				position.y < top - INSIDE_DEPTH &&
-				Math.hypot(position.x, position.z) < radiusAt(shape, position.y);
-			if (inside) {
+			const wasOutside = outside.has(star);
+			if (wasOutside) {
+				const inside =
+					position.y < top - INSIDE_DEPTH &&
+					Math.hypot(position.x, position.z) < radiusAt(shape!, position.y);
+				if (!inside) return;
 				star.collider(0).setCollisionGroups(INSIDE_GROUPS);
-				entering.delete(star);
+				outside.delete(star);
+			} else if (position.y > top + OUTSIDE_HEIGHT) {
+				star.collider(0).setCollisionGroups(OUTSIDE_GROUPS);
+				outside.add(star);
 			}
-		}
+		});
 		// highest first, so taking one out does not move the others still to go
-		for (const index of lost.sort((a, b) => b - a)) {
-			entering.delete(stars[index]);
+		for (const index of lost.reverse()) {
+			outside.delete(stars[index]);
 			world.removeRigidBody(stars[index]);
 			stars.splice(index, 1);
 			spilled.push(index);
@@ -159,9 +165,8 @@ export async function createJarPhysics() {
 			const [bottomRadius, bottom] = profile[0];
 			const topRadius = profile[last][0];
 			top = profile[last][1];
-			if (bottomRadius > 1e-6) walls.push(cap(bottomRadius, bottom, -1));
-			// an invisible lid, so stars stay in when the jar is tipped over
-			walls.push(cap(topRadius, top, 1));
+			// the top is open: tip the jar far enough and the stars pour out
+			if (bottomRadius > 1e-6) walls.push(floor(bottomRadius, bottom));
 			dropSpread = Math.min(Math.max(topRadius - 0.65, 0), 0.6);
 
 			// Whether the wall bends inwards at an outline point, as on a ball. There the slabs on
@@ -240,11 +245,14 @@ export async function createJarPhysics() {
 				RAPIER.ColliderDesc.convexHull(hull)!
 					.setFriction(0.6)
 					.setRestitution(0.3)
-					.setCollisionGroups(resting ? INSIDE_GROUPS : ENTERING_GROUPS),
+					.setCollisionGroups(resting ? INSIDE_GROUPS : OUTSIDE_GROUPS),
 				star
 			);
 			stars.push(star);
-			if (!resting) waiting.push(star);
+			if (!resting) {
+				waiting.push(star);
+				outside.add(star);
+			}
 		},
 
 		/** How the jar is tilted right now, which lags behind a fast shake. */
