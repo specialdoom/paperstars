@@ -65,6 +65,10 @@ function hinge(parent: Group, [p, q]: Crease, direction: 1 | -1) {
 	};
 }
 
+/** How the paper to grab lights up. */
+export const GLOW_COLOR = '#ffe08a';
+export const GLOW_STRENGTH = 0.7;
+
 const clamp01 = (value: number) => Math.min(Math.max(value, 0), 1);
 // wraps alternate faces, so every second one starts a new layer
 const layer = (k: number) => Math.ceil(k / 2);
@@ -77,11 +81,16 @@ function lift(k: number) {
 
 export function createFoldChain(texture: Texture) {
 	const material = new MeshStandardMaterial({ map: texture, side: DoubleSide, roughness: 0.85 });
+	// the paper to grab lights up when the user drags somewhere else
+	const glowing = material.clone();
+	glowing.emissive.set(GLOW_COLOR);
 	const geometries: BufferGeometry[] = [];
 	const add = (parent: Group, left: Crease, right: Crease) => {
 		const geometry = piece(left, right);
 		geometries.push(geometry);
-		parent.add(new Mesh(geometry, material));
+		const mesh = new Mesh(geometry, material);
+		parent.add(mesh);
+		return mesh;
 	};
 
 	const root = new Group();
@@ -89,7 +98,7 @@ export function createFoldChain(texture: Texture) {
 	add(root, LEAD_CREASE, CREASES[0]);
 
 	const lead = hinge(root, LEAD_CREASE, -1);
-	add(
+	const leadPiece = add(
 		lead.body,
 		[
 			[0, 0],
@@ -99,10 +108,12 @@ export function createFoldChain(texture: Texture) {
 	);
 
 	const hinges: ReturnType<typeof hinge>[] = [];
+	/** The piece each hinge swings. */
+	const pieces: Mesh[] = [];
 	let parent = root;
 	for (let k = 1; k < CREASES.length; k++) {
 		const h = hinge(parent, CREASES[k - 1], 1);
-		add(h.body, CREASES[k - 1], k < CREASES.length - 1 ? CREASES[k] : END_CUT);
+		pieces.push(add(h.body, CREASES[k - 1], k < CREASES.length - 1 ? CREASES[k] : END_CUT));
 		hinges.push(h);
 		parent = h.body;
 	}
@@ -122,8 +133,17 @@ export function createFoldChain(texture: Texture) {
 			if (index === 'lead') return { frame: root, crease: LEAD_CREASE, loose: -1 };
 			return { frame: index ? hinges[index - 1].body : root, crease: CREASES[index], loose: 1 };
 		},
+		/** Lights up the paper that hinge `index` (or the leading tail) folds over, by `amount` from 0 to 1. */
+		glow(index: number | 'lead' | null, amount: number) {
+			glowing.emissiveIntensity = amount * GLOW_STRENGTH;
+			const lit = (mesh: Mesh, loose: boolean) =>
+				(mesh.material = loose && amount > 0 ? glowing : material);
+			lit(leadPiece, index === 'lead');
+			pieces.forEach((mesh, k) => lit(mesh, typeof index === 'number' && k >= index));
+		},
 		dispose() {
 			material.dispose();
+			glowing.dispose();
 			for (const geometry of geometries) geometry.dispose();
 		}
 	};

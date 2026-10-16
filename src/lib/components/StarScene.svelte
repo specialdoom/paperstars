@@ -5,7 +5,14 @@
 	import { T, useThrelte } from '@threlte/core';
 	import { OrbitControls } from '@threlte/extras';
 	import { ADVANCE, RADIUS, STRIP_LENGTH, VISIBLE_END } from '#lib/fold.ts';
-	import { FOLDS, STRIP_ANGLE, STRIP_CENTER, createFoldChain } from '#lib/foldChain.ts';
+	import {
+		FOLDS,
+		GLOW_COLOR,
+		GLOW_STRENGTH,
+		STRIP_ANGLE,
+		STRIP_CENTER,
+		createFoldChain
+	} from '#lib/foldChain.ts';
 	import { PINCH, createStarGeometry, setStarPuff } from '#lib/starGeometry.ts';
 	import { createStarTexture, drawStarTexture } from '#lib/starTexture.ts';
 	import { drawStrip, type StarDesign } from '#lib/strip.ts';
@@ -121,6 +128,35 @@
 	let dragSide = 0;
 	let carrying = false;
 	let pressed: { x: number; y: number } | null = null;
+	/** Where a press that missed the paper started, until it turns into a drag. */
+	let missed: { x: number; y: number } | null = null;
+
+	// Dragging anywhere but the paper makes the part to drag light up for a moment.
+	const GLOW_MS = 1400;
+	const GLOW_PULSES = 2;
+	let glow = $state(0);
+	let glowFrame = 0;
+
+	function showGrip() {
+		cancelAnimationFrame(glowFrame);
+		const start = performance.now();
+		const frame = (now: number) => {
+			const t = (now - start) / GLOW_MS;
+			glow = t < 1 ? Math.sin(Math.PI * GLOW_PULSES * t) ** 2 : 0;
+			if (t < 1) glowFrame = requestAnimationFrame(frame);
+		};
+		glowFrame = requestAnimationFrame(frame);
+	}
+
+	function hideGrip() {
+		cancelAnimationFrame(glowFrame);
+		glow = 0;
+	}
+
+	$effect(() => {
+		chain.glow(manual === 'fold' ? Math.floor(folds) : manual === 'tuck' ? 'lead' : null, glow);
+		invalidate();
+	});
 	let startX = 0;
 	let startY = 0;
 
@@ -187,26 +223,49 @@
 	function onpointerdown(event: PointerEvent) {
 		if (!manual || !camera || !controls || dragging || !event.isPrimary || event.button !== 0) return;
 		pressed = { x: event.clientX, y: event.clientY };
+		const value = aim(event) ? grab() : undefined;
+		if (!value) {
+			missed = { x: event.clientX, y: event.clientY };
+			return;
+		}
+
+		hideGrip();
+		dragValue = value;
+		startX = event.clientX;
+		startY = event.clientY;
+		dragging = true;
+		view.style.cursor = 'grabbing';
+		// this runs before the controls see the event, so a touch folds instead of orbiting
+		controls.enabled = false;
+	}
+
+	/** Points `hit` at where on the paper's plane the pointer is; false if it is not over the plane. */
+	function aim(event: PointerEvent) {
 		const bounds = view.getBoundingClientRect();
 		pointer.set(
 			((event.clientX - bounds.left) / bounds.width) * 2 - 1,
 			1 - ((event.clientY - bounds.top) / bounds.height) * 2
 		);
-		raycaster.setFromCamera(pointer, camera);
-		if (!raycaster.ray.intersectPlane(PAPER_PLANE, hit)) return;
-		const value = grab();
-		if (!value) return;
+		raycaster.setFromCamera(pointer, camera!);
+		return raycaster.ray.intersectPlane(PAPER_PLANE, hit) !== null;
+	}
 
-		dragValue = value;
-		startX = event.clientX;
-		startY = event.clientY;
-		dragging = true;
-		// this runs before the controls see the event, so a touch folds instead of orbiting
-		controls.enabled = false;
+	/** Shows a hand over the paper that can be dragged. */
+	function hover(event: PointerEvent) {
+		if (dragging || event.buttons) return;
+		const over =
+			manual && camera && view.contains(event.target as Node) && aim(event) && grab() !== undefined;
+		view.style.cursor = over ? 'grab' : '';
 	}
 
 	function onpointermove(event: PointerEvent) {
-		if (!dragging || !event.isPrimary) return;
+		if (!event.isPrimary) return;
+		if (missed && Math.hypot(event.clientX - missed.x, event.clientY - missed.y) >= CLICK_PX) {
+			missed = null;
+			showGrip();
+		}
+		hover(event);
+		if (!dragging) return;
 		if (carrying) oncarry?.(event.clientX, event.clientY, false);
 		else ondrag?.(dragValue(event.clientX - startX, event.clientY - startY), dragSide);
 	}
@@ -217,11 +276,13 @@
 			pressed !== null &&
 			Math.hypot(event.clientX - pressed.x, event.clientY - pressed.y) < CLICK_PX;
 		pressed = null;
+		missed = null;
 		if (dragging) {
 			dragging = false;
 			if (controls) controls.enabled = true;
 			if (carrying) oncarry?.(event.clientX, event.clientY, true);
 			else if (!clicked) onrelease?.();
+			view.style.cursor = '';
 		}
 		if (clicked) onstep?.();
 	}
@@ -235,6 +296,7 @@
 
 	onDestroy(() => {
 		view.removeEventListener('pointerdown', onpointerdown);
+		cancelAnimationFrame(glowFrame);
 		chain.dispose();
 		stripTexture.dispose();
 		starTexture.dispose();
@@ -262,5 +324,10 @@
 <T is={chain.root} visible={!finished} />
 
 <T.Mesh {geometry} rotation.z={STRIP_ANGLE} visible={finished}>
-	<T.MeshStandardMaterial map={starTexture} roughness={0.85} />
+	<T.MeshStandardMaterial
+		map={starTexture}
+		roughness={0.85}
+		emissive={GLOW_COLOR}
+		emissiveIntensity={manual === 'puff' || manual === 'carry' ? glow * GLOW_STRENGTH : 0}
+	/>
 </T.Mesh>
