@@ -34,10 +34,16 @@
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
+	<link rel="preconnect" href="https://fonts.googleapis.com" />
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+	<link
+		rel="stylesheet"
+		href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700&display=swap"
+	/>
 </svelte:head>
 
 <nav class="bar">
-	<a class="brand" href={resolve('/')}>Paper Stars</a>
+	<a class="brand" href={resolve('/')}><span aria-hidden="true">✦</span> Paper Stars</a>
 	<ul>
 		{#each TABS as tab (tab.path)}
 			<li>
@@ -63,58 +69,174 @@
 {@render children()}
 
 <style>
+	/* A magical night sky: deep violet, pink and cyan glows, gold stars. */
 	:global(:root) {
-		--ink: #3b3352;
-		--muted: #7b7393;
-		--panel: rgba(255, 255, 255, 0.72);
-		--accent: #ff7fa5;
-		font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+		color-scheme: dark;
+		--ink: #fbf4ff;
+		--muted: #c6b7ec;
+		--panel: rgba(38, 22, 88, 0.62);
+		--panel-edge: rgba(255, 190, 240, 0.3);
+		--line: rgba(255, 220, 255, 0.2);
+		--field: rgba(255, 255, 255, 0.08);
+		--accent: #ff8ad8;
+		--accent-2: #8fe9ff;
+		--gold: #ffd77a;
+		--magic: linear-gradient(135deg, #ff8ad8 0%, #b98cff 55%, #8fe9ff 100%);
+		--glow: 0 0 18px rgba(255, 138, 216, 0.45);
+		--display: 'Fredoka', 'Nunito', system-ui, sans-serif;
+		font-family: 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif;
 		color: var(--ink);
 	}
 
 	:global(body) {
 		margin: 0;
 		min-height: 100vh;
-		background: linear-gradient(160deg, #fff4e8 0%, #ffe6f0 45%, #e2ecff 100%) fixed;
+		background:
+			radial-gradient(ellipse at 12% 8%, rgba(255, 120, 210, 0.3), transparent 45%),
+			radial-gradient(ellipse at 88% 18%, rgba(110, 220, 255, 0.22), transparent 45%),
+			radial-gradient(ellipse at 50% 105%, rgba(170, 110, 255, 0.4), transparent 55%),
+			linear-gradient(170deg, #110930 0%, #231255 45%, #3a1a6c 100%);
+		background-attachment: fixed;
+	}
+
+	/* two layers of tiny stars, one of them twinkling */
+	:global(body::before),
+	:global(body::after) {
+		content: '';
+		position: fixed;
+		inset: 0;
+		z-index: -1;
+		pointer-events: none;
+	}
+
+	:global(body::before) {
+		background-image:
+			radial-gradient(1px 1px at 23px 41px, #fff, transparent),
+			radial-gradient(1px 1px at 97px 133px, #ffe9fb, transparent),
+			radial-gradient(1.5px 1.5px at 151px 61px, #fff, transparent),
+			radial-gradient(1px 1px at 189px 171px, #d9f7ff, transparent),
+			radial-gradient(1px 1px at 61px 187px, #fff, transparent);
+		background-size: 210px 210px;
+		opacity: 0.7;
+	}
+
+	:global(body::after) {
+		background-image:
+			radial-gradient(2px 2px at 47px 83px, #ffd77a, transparent),
+			radial-gradient(1.5px 1.5px at 233px 29px, #fff, transparent),
+			radial-gradient(2px 2px at 281px 241px, #ff8ad8, transparent),
+			radial-gradient(1.5px 1.5px at 139px 277px, #8fe9ff, transparent);
+		background-size: 320px 320px;
+		animation: twinkle 4s ease-in-out infinite alternate;
+	}
+
+	@keyframes twinkle {
+		from {
+			opacity: 0.25;
+		}
+		to {
+			opacity: 1;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		:global(body::after) {
+			animation: none;
+			opacity: 0.7;
+		}
 	}
 
 	:global(*) {
 		box-sizing: border-box;
 	}
 
+	:global(h1),
+	:global(h2),
+	:global(h3) {
+		font-family: var(--display);
+		font-weight: 600;
+		letter-spacing: 0.01em;
+	}
+
+	/* page titles shimmer gold to pink, after a gold sparkle */
+	:global(main > h1) {
+		background: linear-gradient(90deg, #ffd77a, #ff8ad8 60%, #c9a4ff);
+		background-clip: text;
+		-webkit-background-clip: text;
+		color: transparent;
+	}
+
+	:global(main > h1::before) {
+		content: '✦ ';
+		-webkit-text-fill-color: var(--gold);
+	}
+
+	:global(a) {
+		color: var(--accent-2);
+	}
+
+	:global(::selection) {
+		background: rgba(255, 138, 216, 0.45);
+	}
+
+	:global(:focus-visible) {
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
+	}
+
 	:global(.panel) {
 		background: var(--panel);
-		border-radius: 16px;
+		border: 1px solid var(--panel-edge);
+		border-radius: 18px;
 		padding: 1.1rem;
-		box-shadow: 0 6px 24px rgba(90, 70, 130, 0.12);
-		backdrop-filter: blur(6px);
+		box-shadow:
+			0 10px 40px rgba(8, 0, 40, 0.45),
+			inset 0 1px 0 rgba(255, 255, 255, 0.12),
+			inset 0 0 30px rgba(255, 138, 216, 0.06);
+		backdrop-filter: blur(10px);
 	}
 
 	:global(button) {
 		font: inherit;
+		font-family: var(--display);
+		font-weight: 500;
 		font-size: 0.9rem;
 		color: var(--ink);
-		padding: 0.45rem 0.85rem;
-		border: 1px solid rgba(59, 51, 82, 0.18);
+		padding: 0.45rem 0.9rem;
+		border: 1px solid var(--line);
 		border-radius: 999px;
-		background: white;
+		background: var(--field);
 		cursor: pointer;
+		transition:
+			box-shadow 0.2s,
+			border-color 0.2s,
+			transform 0.1s;
 	}
 
 	:global(button:hover:not(:disabled)) {
 		border-color: var(--accent);
+		box-shadow: var(--glow);
+	}
+
+	:global(button:active:not(:disabled)) {
+		transform: translateY(1px);
 	}
 
 	:global(button:disabled) {
-		opacity: 0.5;
+		opacity: 0.45;
 		cursor: not-allowed;
 	}
 
-	:global(button.primary) {
-		background: var(--accent);
-		border-color: var(--accent);
-		color: white;
+	:global(button.primary),
+	:global(button.selected) {
+		background: var(--magic);
+		border-color: transparent;
+		color: #1d0b3f;
 		font-weight: 600;
+	}
+
+	:global(button.primary:not(:disabled)) {
+		box-shadow: 0 0 14px rgba(255, 138, 216, 0.35);
 	}
 
 	:global(.visually-hidden) {
@@ -135,17 +257,27 @@
 		align-items: center;
 		gap: 0.5rem 1.5rem;
 		padding: 0.6rem 1.5rem;
-		background: rgba(255, 255, 255, 0.8);
-		backdrop-filter: blur(8px);
-		box-shadow: 0 2px 12px rgba(90, 70, 130, 0.1);
+		background: rgba(17, 9, 48, 0.72);
+		backdrop-filter: blur(12px);
+		border-bottom: 1px solid var(--panel-edge);
+		box-shadow: 0 2px 24px rgba(8, 0, 40, 0.5);
 	}
 
 	.brand {
+		font-family: var(--display);
 		font-weight: 700;
-		font-size: 1.15rem;
-		color: var(--ink);
+		font-size: 1.3rem;
+		background: linear-gradient(90deg, #ffd77a, #ff8ad8 55%, #8fe9ff);
+		background-clip: text;
+		-webkit-background-clip: text;
+		color: transparent;
 		text-decoration: none;
 		letter-spacing: 0.02em;
+		filter: drop-shadow(0 0 8px rgba(255, 138, 216, 0.45));
+	}
+
+	.brand span {
+		-webkit-text-fill-color: var(--gold);
 	}
 
 	ul {
@@ -162,6 +294,8 @@
 		border-radius: 999px;
 		color: var(--muted);
 		text-decoration: none;
+		font-family: var(--display);
+		font-weight: 500;
 		font-size: 0.95rem;
 	}
 
@@ -170,8 +304,9 @@
 	}
 
 	ul a[aria-current='page'] {
-		background: var(--ink);
-		color: white;
+		background: var(--magic);
+		color: #1d0b3f;
+		box-shadow: var(--glow);
 	}
 
 	.wallet {
@@ -184,13 +319,20 @@
 	}
 
 	.wallet strong {
-		font-size: 1.15rem;
-		color: var(--ink);
+		font-family: var(--display);
+		font-size: 1.2rem;
+		color: var(--gold);
+		text-shadow: 0 0 10px rgba(255, 215, 122, 0.5);
+	}
+
+	.wallet span + span strong {
+		color: var(--accent-2);
+		text-shadow: 0 0 10px rgba(143, 233, 255, 0.5);
 	}
 
 	.wallet small {
 		color: var(--accent);
-		font-weight: 600;
+		font-weight: 700;
 	}
 
 	.name {

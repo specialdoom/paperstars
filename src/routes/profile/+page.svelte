@@ -98,9 +98,9 @@
 		font: inherit;
 		color: var(--ink);
 		padding: 0.45rem 0.85rem;
-		border: 1px solid rgba(59, 51, 82, 0.18);
+		border: 1px solid var(--line);
 		border-radius: 999px;
-		background: white;
+		background: var(--field);
 	}
 
 	input:focus {
@@ -128,13 +128,15 @@
 
 	dd {
 		margin: 0.15rem 0 0;
-		font-size: 1.3rem;
+		font-family: var(--display);
+		font-size: 1.4rem;
 		font-weight: 600;
+		color: var(--gold);
 		font-variant-numeric: tabular-nums;
 	}
 
 	.danger {
 		margin-top: 0.75rem;
-		color: #b3261e;
+		color: #ff9aa8;
 	}
 </style>

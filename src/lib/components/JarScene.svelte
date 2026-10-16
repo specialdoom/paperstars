@@ -164,9 +164,11 @@
 	<T.Mesh renderOrder={1}>
 		<T.LatheGeometry args={[outline, 48]} />
 		<T.MeshStandardMaterial
-			color="#cfe6ff"
+			color="#e2d2ff"
+			emissive="#5a2f9e"
+			emissiveIntensity={0.25}
 			transparent
-			opacity={0.22}
+			opacity={0.24}
 			roughness={0.1}
 			side={DoubleSide}
 			depthWrite={false}
@@ -176,7 +178,7 @@
 		<T.Mesh position.y={floorY} rotation.x={-Math.PI / 2} renderOrder={1}>
 			<T.CircleGeometry args={[floorRadius, 48]} />
 			<T.MeshStandardMaterial
-				color="#cfe6ff"
+				color="#e2d2ff"
 				transparent
 				opacity={0.35}
 				side={DoubleSide}
@@ -186,6 +188,12 @@
 	{/if}
 	<T.Mesh position.y={rimY} rotation.x={Math.PI / 2} renderOrder={1}>
 		<T.TorusGeometry args={[rimRadius, 0.07, 12, 48]} />
-		<T.MeshStandardMaterial color="#e6f1ff" transparent opacity={0.7} roughness={0.2} />
+		<T.MeshStandardMaterial
+			color="#ffd77a"
+			emissive="#ffb84d"
+			emissiveIntensity={0.35}
+			metalness={0.6}
+			roughness={0.25}
+		/>
 	</T.Mesh>
 </T.Group>

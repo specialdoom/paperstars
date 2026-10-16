@@ -60,18 +60,18 @@
 	}
 
 	.glass {
-		fill: rgba(230, 241, 255, 0.55);
+		fill: rgba(200, 170, 255, 0.16);
 	}
 
 	.rim {
 		fill: none;
-		stroke: rgba(59, 51, 82, 0.45);
+		stroke: rgba(255, 215, 122, 0.8);
 		stroke-width: 0.07;
 		stroke-linejoin: round;
 	}
 
 	circle {
-		stroke: rgba(59, 51, 82, 0.25);
+		stroke: rgba(255, 255, 255, 0.35);
 		stroke-width: 0.03;
 	}
 </style>

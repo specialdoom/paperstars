@@ -22,10 +22,10 @@
 		ctx.drawImage(strip, 0, 0, WIDTH, FULL_HEIGHT);
 		const from = (VISIBLE_START / STRIP_LENGTH) * WIDTH;
 		const to = (VISIBLE_END / STRIP_LENGTH) * WIDTH;
-		ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
+		ctx.fillStyle = 'rgba(17, 9, 48, 0.65)';
 		ctx.fillRect(0, 0, from, FULL_HEIGHT);
 		ctx.fillRect(to, 0, WIDTH - to, FULL_HEIGHT);
-		ctx.strokeStyle = '#3b3352';
+		ctx.strokeStyle = '#ffd77a';
 		ctx.lineWidth = 2;
 		ctx.strokeRect(from, 1, to - from, FULL_HEIGHT - 2);
 

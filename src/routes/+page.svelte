@@ -513,7 +513,7 @@
 		background: none;
 		cursor: pointer;
 		overflow: hidden;
-		box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+		box-shadow: 0 0 10px rgba(255, 138, 216, 0.5);
 	}
 
 	input[type='color']::-webkit-color-swatch-wrapper {
@@ -533,12 +533,6 @@
 
 	.patterns button {
 		text-transform: capitalize;
-	}
-
-	button.selected {
-		background: var(--ink);
-		border-color: var(--ink);
-		color: white;
 	}
 
 	.size {
@@ -584,7 +578,7 @@
 		width: 4.5rem;
 		height: 4.5rem;
 		margin: -2.25rem 0 0 -2.25rem;
-		filter: drop-shadow(0 6px 8px rgba(59, 51, 82, 0.35));
+		filter: drop-shadow(0 0 12px rgba(255, 215, 122, 0.8));
 		pointer-events: none;
 	}
 
@@ -607,6 +601,7 @@
 
 	.jar.target {
 		outline: 3px solid var(--accent);
+		box-shadow: 0 0 30px rgba(255, 138, 216, 0.6);
 	}
 
 	.keys {
@@ -653,15 +648,16 @@
 		flex: 1;
 		height: 4px;
 		border-radius: 2px;
-		background: rgba(59, 51, 82, 0.15);
+		background: var(--line);
 	}
 
 	.dots li.done {
-		background: var(--ink);
+		background: var(--accent-2);
 	}
 
 	.dots li.current {
 		background: var(--accent);
+		box-shadow: 0 0 8px var(--accent);
 	}
 
 	.step h2 {
