@@ -99,13 +99,14 @@ function hslToHex(h: number, s: number, l: number) {
 	return `#${channel(0)}${channel(8)}${channel(4)}`;
 }
 
-export function randomDesign(): StarDesign {
+/** A random design, using one of `patterns`. */
+export function randomDesign(patterns: readonly Pattern[] = PATTERNS): StarDesign {
 	const hue = Math.random() * 360;
 	const shift = 20 + Math.random() * 140;
 	return {
 		colorA: hslToHex(hue, 0.6 + Math.random() * 0.3, 0.55 + Math.random() * 0.2),
 		colorB: hslToHex((hue + shift) % 360, 0.5 + Math.random() * 0.4, 0.75 + Math.random() * 0.2),
-		pattern: PATTERNS[Math.floor(Math.random() * PATTERNS.length)],
+		pattern: patterns[Math.floor(Math.random() * patterns.length)],
 		scale: 1 + Math.floor(Math.random() * 5)
 	};
 }

@@ -16,7 +16,19 @@
 		jarShape,
 		loseStars
 	} from '#lib/jar.svelte.ts';
-	import { HAND_BONUS, earn, game, starWorth } from '#lib/game.svelte.ts';
+	import { resolve } from '$app/paths';
+	import {
+		MIN_SEAL,
+		PATTERN_COST,
+		SHAPE_COST,
+		earnStar,
+		factoryRestMs,
+		game,
+		handBonus,
+		seal,
+		starWorth,
+		wishesFor
+	} from '#lib/game.svelte.ts';
 	import { JAR_SHAPES } from '#lib/jarShapes.ts';
 	import { PATTERNS, randomDesign, type StarDesign } from '#lib/strip.ts';
 
@@ -196,9 +208,11 @@
 
 	async function dropInJar() {
 		if (!addStar($state.snapshot(design), worth)) return;
-		earn(worth);
+		earnStar(worth, !helped);
 		await goTo(0, true);
 	}
+
+	const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 	let running = false;
 
@@ -213,9 +227,11 @@
 				await goTo(step + 1);
 				continue;
 			}
-			await new Promise((resolve) => setTimeout(resolve, ADMIRE_MS));
+			await sleep(ADMIRE_MS);
 			if (!factory) break;
 			await dropInJar();
+			// the auto-folder takes a breather between stars, shorter with every gear bought
+			await sleep(factoryRestMs());
 		}
 		factory = false;
 		running = false;
@@ -230,19 +246,26 @@
 	function clearJar() {
 		if (confirm('Empty the jar? This removes all your stars.')) emptyJar();
 	}
+
+	const jarLuck = $derived(jar.stars.reduce((sum, star) => sum + star.worth, 0));
+
+	function sealJar() {
+		const wishes = wishesFor(jarLuck);
+		const question = `Seal this jar and put it on the shelf? It holds ${jarLuck} luck and grants ${wishes} ${
+			wishes === 1 ? 'wish' : 'wishes'
+		}. You start again with an empty jar.`;
+		if (!confirm(question)) return;
+		factory = false;
+		seal(jar.shape, $state.snapshot(jar.stars));
+		emptyJar();
+	}
 </script>
 
 <svelte:head>
 	<title>Paper Stars</title>
 </svelte:head>
 
-<header>
-	<h1>Paper Stars</h1>
-	<p>Design a paper strip, fold it into a lucky star, fill your jar.</p>
-	<p class="luck" aria-live="polite">
-		<strong>{Math.floor(game.luck).toLocaleString()}</strong> luck
-	</p>
-</header>
+<h1 class="visually-hidden">Fold a lucky star</h1>
 
 <main>
 	<section class="panel controls">
@@ -261,12 +284,16 @@
 
 		<div class="patterns" role="group" aria-label="Pattern">
 			{#each PATTERNS as pattern (pattern)}
+				{@const locked = !game.patterns.includes(pattern)}
 				<button
 					type="button"
 					class:selected={design.pattern === pattern}
 					aria-pressed={design.pattern === pattern}
+					disabled={locked}
+					title={locked ? `Unlock in the shop for ${PATTERN_COST[pattern]} wishes` : undefined}
 					onclick={() => (design.pattern = pattern)}
 				>
+					{#if locked}<span aria-label="locked">🔒</span>{/if}
 					{pattern}
 				</button>
 			{/each}
@@ -280,7 +307,7 @@
 		<StripPreview {design} />
 
 		<div class="actions">
-			<button type="button" onclick={() => (design = randomDesign())}>Surprise me</button>
+			<button type="button" onclick={() => (design = randomDesign(game.patterns))}>Surprise me</button>
 		</div>
 	</section>
 
@@ -346,8 +373,8 @@
 			<p class="worth">
 				This star is worth <strong>{worth} luck</strong>
 				{helped
-					? `: fold every step yourself for ${HAND_BONUS} times as much.`
-					: `: ${HAND_BONUS} times as much for folding it all by hand.`}
+					? `: fold every step yourself for ${handBonus()} times as much.`
+					: `: ${handBonus()} times as much for folding it all by hand.`}
 			</p>
 			<div class="actions">
 				<button type="button" onclick={() => goTo(step - 1)} disabled={step === 0 || busy}>
@@ -390,12 +417,16 @@
 		</div>
 		<div class="patterns" role="group" aria-label="Jar shape">
 			{#each JAR_SHAPES as option (option.id)}
+				{@const locked = !game.shapes.includes(option.id)}
 				<button
 					type="button"
 					class:selected={option === shape}
 					aria-pressed={option === shape}
+					disabled={locked}
+					title={locked ? `Unlock in the shop for ${SHAPE_COST[option.id]} wishes` : undefined}
 					onclick={() => chooseJar(option)}
 				>
+					{#if locked}<span aria-label="locked">🔒</span>{/if}
 					{option.name}
 				</button>
 			{/each}
@@ -409,7 +440,22 @@
 			Drag the jar to tip it and shake the stars around. Stars that spill over the rim or pour out
 			of a tipped jar are lost.
 		</p>
-		<button type="button" onclick={clearJar} disabled={jar.stars.length === 0}>Empty jar</button>
+		<div class="actions">
+			<button
+				type="button"
+				class="primary"
+				onclick={sealJar}
+				disabled={jar.stars.length < MIN_SEAL || busy}
+				title={jar.stars.length < MIN_SEAL ? `A jar needs ${MIN_SEAL} stars to be sealed` : undefined}
+			>
+				Seal jar · {wishesFor(jarLuck)} {wishesFor(jarLuck) === 1 ? 'wish' : 'wishes'}
+			</button>
+			<button type="button" onclick={clearJar} disabled={jar.stars.length === 0}>Empty jar</button>
+		</div>
+		<p class="hint">
+			Sealed jars go on the <a href={resolve('/shelf')}>shelf</a>, where they keep giving luck. Spend
+			luck and wishes in the <a href={resolve('/shop')}>shop</a>.
+		</p>
 	</section>
 </main>
 
@@ -420,33 +466,6 @@
 {/if}
 
 <style>
-	header {
-		padding: 1.5rem 1.5rem 0.5rem;
-		text-align: center;
-	}
-
-	h1 {
-		margin: 0;
-		font-size: 2rem;
-		letter-spacing: 0.02em;
-	}
-
-	header p {
-		margin: 0.25rem 0 0;
-		color: var(--muted);
-	}
-
-	header p.luck {
-		margin-top: 0.6rem;
-		font-size: 1.1rem;
-		color: var(--ink);
-		font-variant-numeric: tabular-nums;
-	}
-
-	.luck strong {
-		font-size: 1.5rem;
-	}
-
 	.worth {
 		margin: 0.75rem 0 0;
 		font-size: 0.85rem;
@@ -465,14 +484,6 @@
 		max-width: 1400px;
 		margin: 0 auto;
 		align-items: start;
-	}
-
-	.panel {
-		background: var(--panel);
-		border-radius: 16px;
-		padding: 1.1rem;
-		box-shadow: 0 6px 24px rgba(90, 70, 130, 0.12);
-		backdrop-filter: blur(6px);
 	}
 
 	h2 {
@@ -520,26 +531,6 @@
 		margin-bottom: 1rem;
 	}
 
-	button {
-		font: inherit;
-		font-size: 0.9rem;
-		color: var(--ink);
-		padding: 0.45rem 0.85rem;
-		border: 1px solid rgba(59, 51, 82, 0.18);
-		border-radius: 999px;
-		background: white;
-		cursor: pointer;
-	}
-
-	button:hover:not(:disabled) {
-		border-color: var(--accent);
-	}
-
-	button:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
 	.patterns button {
 		text-transform: capitalize;
 	}
@@ -548,13 +539,6 @@
 		background: var(--ink);
 		border-color: var(--ink);
 		color: white;
-	}
-
-	button.primary {
-		background: var(--accent);
-		border-color: var(--accent);
-		color: white;
-		font-weight: 600;
 	}
 
 	.size {
@@ -587,7 +571,6 @@
 		position: relative;
 		height: min(58vh, 520px);
 		min-height: 300px;
-		cursor: grab;
 	}
 
 	/* the star has been picked up: only a faint outline stays on the table */
@@ -739,6 +722,14 @@
 		margin: 0.25rem 0 0.75rem;
 		font-size: 0.8rem;
 		color: var(--muted);
+	}
+
+	.hint a {
+		color: var(--ink);
+	}
+
+	.jar .actions {
+		margin-top: 0;
 	}
 
 	@media (max-width: 980px) {
