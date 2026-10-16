@@ -1,5 +1,7 @@
 <script lang="ts">
-	import JarPicture from '#lib/components/JarPicture.svelte';
+	import { NoToneMapping } from 'three';
+	import { Canvas } from '@threlte/core';
+	import JarPreviewScene from '#lib/components/JarPreviewScene.svelte';
 	import StripPreview from '#lib/components/StripPreview.svelte';
 	import {
 		PATTERN_COST,
@@ -96,7 +98,11 @@
 					{@const amount = SHAPE_COST[shape.id] ?? 0}
 					<li class="panel item">
 						<h3>{shape.name}</h3>
-						<div class="jar"><JarPicture {shape} /></div>
+						<div class="jar">
+							<Canvas toneMapping={NoToneMapping}>
+								<JarPreviewScene {shape} />
+							</Canvas>
+						</div>
 						<button
 							type="button"
 							class="primary"
@@ -186,7 +192,12 @@
 	}
 
 	.jar {
-		height: 140px;
+		height: 200px;
+		cursor: grab;
+	}
+
+	.jar:active {
+		cursor: grabbing;
 	}
 
 	.done {

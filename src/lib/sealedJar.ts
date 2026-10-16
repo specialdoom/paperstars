@@ -46,7 +46,9 @@ export function buildSealedJar(
 	stars: number,
 	designs: StarDesign[],
 	starGeometry: BufferGeometry,
-	earning: boolean
+	earning: boolean,
+	/** Whether it has its lid on; an open jar shows a gold rim instead. */
+	sealed = true
 ): SealedJarModel {
 	const group = new Group();
 	const owned: { dispose(): void }[] = [];
@@ -98,6 +100,23 @@ export function buildSealedJar(
 		floor.renderOrder = 1;
 	}
 
+	if (!sealed) {
+		const rim = add(
+			new Mesh(
+				new TorusGeometry(rimRadius, 0.07, 12, 48),
+				new MeshStandardMaterial({
+					color: '#ffd77a',
+					emissive: '#ffb84d',
+					emissiveIntensity: 0.35,
+					metalness: 0.6,
+					roughness: 0.25
+				})
+			)
+		);
+		rim.position.y = rimY;
+		rim.rotation.x = Math.PI / 2;
+	}
+
 	// a gold lid, glowing brighter on a jar that is giving luck, tied on with a pink ribbon
 	const lidRadius = rimRadius + LID_OVERHANG;
 	const lid = add(
@@ -113,6 +132,7 @@ export function buildSealedJar(
 		)
 	);
 	lid.position.y = rimY + LID_HEIGHT / 2;
+	lid.visible = sealed;
 
 	const ribbon = add(
 		new Mesh(
@@ -122,6 +142,7 @@ export function buildSealedJar(
 	);
 	ribbon.position.y = rimY - 0.18;
 	ribbon.rotation.x = Math.PI / 2;
+	ribbon.visible = sealed;
 
 	// the stars, in the same pile the jar would have settled them in
 	const placements = packStars(stars, shape);
@@ -151,7 +172,7 @@ export function buildSealedJar(
 	return {
 		group,
 		bottom: Math.min(...profile.map(([, y]) => y)),
-		top: rimY + LID_HEIGHT,
+		top: sealed ? rimY + LID_HEIGHT : rimY,
 		dispose() {
 			for (const item of owned) item.dispose();
 		}
