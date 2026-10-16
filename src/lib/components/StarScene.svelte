@@ -28,7 +28,8 @@
 		ondrag,
 		onrelease,
 		oncarry,
-		onstep
+		onstep,
+		onhold
 	}: {
 		design: StarDesign;
 		/** Wraps folded so far. */
@@ -50,6 +51,8 @@
 		oncarry?: (x: number, y: number, dropped: boolean) => void;
 		/** Called for a plain click, which does the next bit of the move in one go. */
 		onstep?: () => void;
+		/** Called with true once the button has been held down without moving, and false when it is let go. */
+		onhold?: (holding: boolean) => void;
 	} = $props();
 
 	const { canvas: view, invalidate, size } = useThrelte();
@@ -128,6 +131,21 @@
 	let dragSide = 0;
 	let carrying = false;
 	let pressed: { x: number; y: number } | null = null;
+	/** Holding the button down this long without moving keeps the folding going until it is let go. */
+	const HOLD_MS = 280;
+	let holdTimer: ReturnType<typeof setTimeout> | undefined;
+	let holding = false;
+
+	function startHold() {
+		holding = true;
+		missed = null;
+		// a press on the paper that never moved was not a drag after all
+		if (dragging) {
+			dragging = false;
+			view.style.cursor = '';
+		}
+		onhold?.(true);
+	}
 	/** Where a press that missed the paper started, until it turns into a drag. */
 	let missed: { x: number; y: number } | null = null;
 
@@ -223,6 +241,8 @@
 	function onpointerdown(event: PointerEvent) {
 		if (!manual || !camera || !controls || dragging || !event.isPrimary || event.button !== 0) return;
 		pressed = { x: event.clientX, y: event.clientY };
+		// the finished star is carried, not folded
+		if (manual !== 'carry') holdTimer = setTimeout(startHold, HOLD_MS);
 		const value = aim(event) ? grab() : undefined;
 		if (!value) {
 			missed = { x: event.clientX, y: event.clientY };
@@ -260,6 +280,9 @@
 
 	function onpointermove(event: PointerEvent) {
 		if (!event.isPrimary) return;
+		if (pressed && Math.hypot(event.clientX - pressed.x, event.clientY - pressed.y) >= CLICK_PX) {
+			clearTimeout(holdTimer);
+		}
 		if (missed && Math.hypot(event.clientX - missed.x, event.clientY - missed.y) >= CLICK_PX) {
 			missed = null;
 			showGrip();
@@ -272,6 +295,14 @@
 
 	function onpointerup(event: PointerEvent) {
 		if (!event.isPrimary) return;
+		clearTimeout(holdTimer);
+		if (holding) {
+			holding = false;
+			pressed = missed = null;
+			if (controls) controls.enabled = true;
+			onhold?.(false);
+			return;
+		}
 		const clicked =
 			pressed !== null &&
 			Math.hypot(event.clientX - pressed.x, event.clientY - pressed.y) < CLICK_PX;
@@ -296,6 +327,7 @@
 
 	onDestroy(() => {
 		view.removeEventListener('pointerdown', onpointerdown);
+		clearTimeout(holdTimer);
 		cancelAnimationFrame(glowFrame);
 		chain.dispose();
 		stripTexture.dispose();

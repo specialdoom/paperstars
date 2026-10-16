@@ -79,7 +79,7 @@
 	const LAST = STEPS.length - 1;
 
 	const HINTS = {
-		fold: 'Click to fold once, or drag the loose end of the strip across the crease.',
+		fold: 'Click to fold once, hold to keep folding, or drag the loose end of the strip across the crease.',
 		tuck: 'Click, or drag the short tail in over the pentagon.',
 		puff: 'Click to push a side in, or press on a side and drag towards the middle.'
 	};
@@ -192,6 +192,16 @@
 		}
 		moving = false;
 		arrive();
+	}
+
+	let holding = false;
+
+	/** Holding the button down folds on and on, until it is let go or the star is finished. */
+	async function hold(on: boolean) {
+		const started = !holding && on;
+		holding = on;
+		if (!started) return;
+		while (holding && action && action !== 'carry') await advance();
 	}
 
 	/** Moves on to the next step once the paper has got to where that step starts. */
@@ -326,12 +336,17 @@
 					onrelease={release}
 					oncarry={carry}
 					onstep={advance}
+					onhold={hold}
 				/>
 			</Canvas>
 			<dl class="keys">
 				<div>
 					<dt>Left click</dt>
 					<dd>fold once, drop the finished star in the jar{manual ? '' : ' (with Fold it myself on)'}</dd>
+				</div>
+				<div>
+					<dt>Left hold</dt>
+					<dd>keep folding until you let go</dd>
 				</div>
 				<div>
 					<dt>Left drag</dt>
