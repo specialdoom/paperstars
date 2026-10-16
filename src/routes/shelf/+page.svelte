@@ -1,12 +1,26 @@
 <script lang="ts">
+	import { NoToneMapping } from 'three';
+	import { Canvas } from '@threlte/core';
 	import { resolve } from '$app/paths';
-	import JarPicture from '#lib/components/JarPicture.svelte';
-	import { MIN_SEAL, earningJars, game, jarLuckPerSecond, owner, shelfSlots } from '#lib/game.svelte.ts';
-	import { JAR_SHAPES, findShape } from '#lib/jarShapes.ts';
+	import ShelfScene from '#lib/components/ShelfScene.svelte';
+	import { MIN_SEAL, earningJars, game, owner, shelfSlots } from '#lib/game.svelte.ts';
+	import { SHELF } from '#lib/sealedJar.ts';
 
 	const earning = $derived(new Set(earningJars()));
 	// newest first
-	const jars = $derived(game.shelf.map((jar, i) => ({ jar, number: i + 1 })).reverse());
+	const jars = $derived(
+		game.shelf.map((jar, i) => ({ jar, number: i + 1, earning: earning.has(jar) })).reverse()
+	);
+
+	let width = $state(0);
+	const columns = $derived(width < 520 ? 2 : width < 820 ? 3 : 4);
+	const rows = $derived(Math.max(1, Math.ceil(jars.length / columns)));
+	/** Room for the labels under each plank, in pixels. */
+	const LABEL_PX = 64;
+	// the scene is as wide as the page, so this is how much of it fits in a pixel
+	const unitsPerPixel = $derived((columns * SHELF.SPACING + 1) / Math.max(width, 1));
+	const rowHeight = $derived(SHELF.ROW_HEIGHT + LABEL_PX * unitsPerPixel * 0.6);
+	const height = $derived(Math.max(320, (rows * rowHeight + 1) / unitsPerPixel));
 </script>
 
 <svelte:head>
@@ -16,33 +30,17 @@
 <main>
 	<h1>{owner()} shelf</h1>
 	<p class="lead">
-		Every sealed jar lives here. The {shelfSlots()} richest give back their luck every ten minutes, for
-		as long as the game is open; a Bigger shelf in the shop makes room for more.
+		Every sealed jar lives here. The {shelfSlots()} richest, the sparkling ones, give back their luck
+		every ten minutes for as long as the game is open; a Bigger shelf in the shop makes room for more.
+		Drag to look around.
 	</p>
 
 	{#if jars.length}
-		<ul class="shelf">
-			{#each jars as { jar, number } (number)}
-				<li class="panel" class:earning={earning.has(jar)}>
-					<div class="picture">
-						<JarPicture
-							shape={findShape(jar.shape) ?? JAR_SHAPES[0]}
-							stars={jar.stars}
-							colors={jar.colors}
-						/>
-					</div>
-					<h2>{owner()} jar #{number}</h2>
-					<p>
-						{jar.stars} stars · {Math.floor(jar.luck).toLocaleString()} luck
-						<br />
-						<small>sealed {new Date(jar.sealedAt).toLocaleDateString()}</small>
-					</p>
-					{#if earning.has(jar)}
-						<span class="badge">+{jarLuckPerSecond(jar).toFixed(2)} luck/s</span>
-					{/if}
-				</li>
-			{/each}
-		</ul>
+		<div class="view" bind:clientWidth={width} style:height="{height}px">
+			<Canvas toneMapping={NoToneMapping}>
+				<ShelfScene {jars} {columns} {rowHeight} owner={owner()} />
+			</Canvas>
+		</div>
 	{:else}
 		<p class="panel empty">
 			The shelf is empty. Fill a jar with at least {MIN_SEAL} stars on the
@@ -64,62 +62,20 @@
 	}
 
 	.lead {
-		margin: 0.4rem 0 1.5rem;
+		margin: 0.4rem 0 1rem;
 		color: var(--muted);
-		max-width: 60ch;
+		max-width: 62ch;
 	}
 
-	.shelf {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-		gap: 1rem;
-		margin: 0;
-		padding: 0;
-		list-style: none;
+	.view {
+		cursor: grab;
 	}
 
-	li {
-		position: relative;
-		text-align: center;
-	}
-
-	li.earning {
-		outline: 2px solid var(--accent);
-	}
-
-	.picture {
-		height: 160px;
-	}
-
-	h2 {
-		margin: 0.6rem 0 0.2rem;
-		font-size: 0.95rem;
-	}
-
-	li p {
-		margin: 0;
-		font-size: 0.85rem;
-		color: var(--muted);
-		font-variant-numeric: tabular-nums;
-	}
-
-	.badge {
-		position: absolute;
-		top: 0.6rem;
-		right: 0.6rem;
-		padding: 0.1rem 0.5rem;
-		border-radius: 999px;
-		background: var(--accent);
-		color: white;
-		font-size: 0.75rem;
-		font-weight: 600;
+	.view:active {
+		cursor: grabbing;
 	}
 
 	.empty {
 		color: var(--muted);
-	}
-
-	.empty a {
-		color: var(--ink);
 	}
 </style>

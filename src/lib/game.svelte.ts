@@ -3,7 +3,7 @@
 // little luck, and grants wishes, which unlock new patterns and jars.
 
 import { JAR_SHAPES } from './jarShapes';
-import { PATTERNS, type Pattern } from './strip';
+import { PATTERNS, type Pattern, type StarDesign } from './strip';
 
 const STORAGE_KEY = 'paperstars.game';
 /** Where the jar keeps its stars; a save with stars in it predates locked patterns and jars. */
@@ -17,8 +17,8 @@ export const MIN_SEAL = 10;
 const SHELF_PAYBACK_SECONDS = 600;
 /** Jars on the shelf that give luck, before any Bigger shelf. */
 const BASE_SHELF_SLOTS = 3;
-/** Colours kept from a sealed jar to draw it on the shelf. */
-const SHELF_SWATCHES = 24;
+/** Star designs kept from a sealed jar to show it on the shelf. */
+const SHELF_SAMPLES = 24;
 
 export type Currency = 'luck' | 'wishes';
 
@@ -77,8 +77,8 @@ export interface SealedJar {
 	shape: string;
 	stars: number;
 	luck: number;
-	/** A sample of the stars' colours, to draw the jar with. */
-	colors: string[];
+	/** A sample of the stars' designs, to show the jar with. */
+	designs: StarDesign[];
 	sealedAt: string;
 }
 
@@ -136,12 +136,25 @@ function load(): Game {
 		}
 		if (Array.isArray(saved.shelf)) {
 			game.shelf = saved.shelf.filter(
-				(jar: SealedJar) =>
+				(jar: SealedJar & { colors?: string[] }) =>
 					typeof jar?.shape === 'string' &&
 					isNumber(jar.stars) &&
 					isNumber(jar.luck) &&
-					Array.isArray(jar.colors)
+					(Array.isArray(jar.designs) || Array.isArray(jar.colors))
 			);
+			// jars sealed before designs were kept only remember colours, in pairs
+			for (const jar of game.shelf as (SealedJar & { colors?: string[] })[]) {
+				if (Array.isArray(jar.designs) || !jar.colors) continue;
+				jar.designs = jar.colors
+					.filter((_, i) => i % 2 === 0)
+					.map((colorA, i) => ({
+						colorA,
+						colorB: jar.colors![2 * i + 1] ?? colorA,
+						pattern: 'stripes' as const,
+						scale: 3
+					}));
+				delete jar.colors;
+			}
 		}
 		for (const key of ['folded', 'byHand', 'luckEarned'] as const) {
 			if (isNumber(saved.stats?.[key])) game.stats[key] = saved.stats[key];
@@ -231,18 +244,18 @@ export function wishesFor(luck: number) {
 }
 
 /** Puts a jar of stars on the shelf and grants its wishes. */
-export function seal(shape: string, stars: { colorA: string; colorB: string; worth: number }[]) {
+export function seal(shape: string, stars: (StarDesign & { worth: number })[]) {
 	if (stars.length < MIN_SEAL) return 0;
 	const luck = stars.reduce((sum, star) => sum + star.worth, 0);
-	const every = Math.max(1, Math.floor(stars.length / SHELF_SWATCHES));
+	const every = Math.max(1, Math.floor(stars.length / SHELF_SAMPLES));
 	game.shelf.push({
 		shape,
 		stars: stars.length,
 		luck,
-		colors: stars
+		designs: stars
 			.filter((_, i) => i % every === 0)
-			.slice(0, SHELF_SWATCHES)
-			.flatMap((star) => [star.colorA, star.colorB]),
+			.slice(0, SHELF_SAMPLES)
+			.map(({ colorA, colorB, pattern, scale }) => ({ colorA, colorB, pattern, scale })),
 		sealedAt: new Date().toISOString()
 	});
 	const wishes = wishesFor(luck);
