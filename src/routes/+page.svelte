@@ -17,6 +17,7 @@
 		loseStars
 	} from '#lib/jar.svelte.ts';
 	import { resolve } from '$app/paths';
+	import { ask } from '#lib/confirm.svelte.ts';
 	import {
 		MIN_SEAL,
 		PATTERN_COST,
@@ -253,19 +254,30 @@
 		factory = false;
 	}
 
-	function clearJar() {
-		if (confirm('Empty the jar? This removes all your stars.')) emptyJar();
+	async function clearJar() {
+		const yes = await ask({
+			title: 'Empty the jar?',
+			message: 'All its stars are thrown away, and the luck they hold with them.',
+			confirm: 'Empty jar',
+			danger: true
+		});
+		if (yes) emptyJar();
 	}
 
 	const jarLuck = $derived(jar.stars.reduce((sum, star) => sum + star.worth, 0));
 
-	function sealJar() {
-		const wishes = wishesFor(jarLuck);
-		const question = `Seal this jar and put it on the shelf? It holds ${jarLuck} luck and grants ${wishes} ${
-			wishes === 1 ? 'wish' : 'wishes'
-		}. You start again with an empty jar.`;
-		if (!confirm(question)) return;
+	async function sealJar() {
+		// no more stars land in it while the player decides, so the wishes on offer stay true
 		factory = false;
+		const wishes = wishesFor(jarLuck);
+		const yes = await ask({
+			title: 'Seal this jar?',
+			message: `It goes on your shelf with its ${jar.stars.length} stars and ${jarLuck} luck, and grants ${wishes} ${
+				wishes === 1 ? 'wish' : 'wishes'
+			}. You start again with an empty jar.`,
+			confirm: `Seal for ${wishes} ${wishes === 1 ? 'wish' : 'wishes'}`
+		});
+		if (!yes) return;
 		seal(jar.shape, $state.snapshot(jar.stars));
 		emptyJar();
 	}

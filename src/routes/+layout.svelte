@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import favicon from '#lib/assets/favicon.svg';
+	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import { game, luckPerSecond, tick } from '#lib/game.svelte.ts';
 	import type { LayoutProps } from './$types';
 
@@ -67,6 +68,8 @@
 </nav>
 
 {@render children()}
+
+<ConfirmDialog />
 
 <style>
 	/* A magical night sky: deep violet, pink and cyan glows, gold stars. */

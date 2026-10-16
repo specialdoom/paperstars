@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { ask } from '#lib/confirm.svelte.ts';
 	import { game, luckPerSecond, rename, resetGame } from '#lib/game.svelte.ts';
 
 	let name = $state(game.name);
@@ -18,8 +19,14 @@
 		name = game.name;
 	}
 
-	function reset() {
-		if (confirm('Start over? This forgets your luck, wishes, upgrades, shelf and jar.')) resetGame();
+	async function reset() {
+		const yes = await ask({
+			title: 'Start over?',
+			message: 'This forgets your luck, wishes, upgrades, shelf and jar. It cannot be undone.',
+			confirm: 'Reset game',
+			danger: true
+		});
+		if (yes) resetGame();
 	}
 </script>
 
